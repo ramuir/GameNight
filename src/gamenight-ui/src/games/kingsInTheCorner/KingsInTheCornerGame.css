@@ -1,0 +1,214 @@
+.kings-game-shell {
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.kings-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: start;
+}
+
+.kings-title {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.kings-subtitle {
+  margin: 0;
+  color: #475569;
+  max-width: 58ch;
+}
+
+.kings-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.control-field span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.control-field select,
+.control-actions button,
+.pile-slot,
+.player-card {
+  border-radius: 12px;
+}
+
+.control-field select,
+.control-actions button,
+.player-card {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.control-field select {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.control-actions button {
+  padding: 10px 14px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.control-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0 10px;
+}
+
+.status-bar span {
+  display: inline-flex;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.status-message {
+  margin: 0 0 20px;
+  color: #1e293b;
+}
+
+.hand-panel {
+  margin-top: 20px;
+}
+
+.hand-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.hand-panel-header h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.hand-panel-header span {
+  color: #64748b;
+}
+
+.hand-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.pile-slot,
+.deck-card {
+  min-height: 152px;
+  padding: 14px;
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: start;
+  text-align: left;
+}
+
+.pile-slot {
+  cursor: pointer;
+}
+
+.pile-slot-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.pile-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.pile-placeholder {
+  color: #94a3b8;
+}
+
+.center-zone {
+  display: grid;
+  gap: 14px;
+}
+
+.playing-card {
+  min-width: 68px;
+  min-height: 92px;
+  padding: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #ffffff;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
+.playing-card-red {
+  color: #b91c1c;
+}
+
+.playing-card-black {
+  color: #111827;
+}
+
+.playing-card-back {
+  color: #ffffff;
+  background: linear-gradient(135deg, #1d4ed8, #1e3a8a);
+  border-color: #1e40af;
+}
+
+.player-card {
+  cursor: pointer;
+}
+
+.playing-card-selected {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .kings-toolbar {
+    flex-direction: column;
+  }
+
+  .board-grid {
+    grid-template-columns: 1fr;
+  }
+}
