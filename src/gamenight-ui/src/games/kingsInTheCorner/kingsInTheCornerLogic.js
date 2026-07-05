@@ -28,7 +28,6 @@ const TARGETS = [
   { area: 'corners', key: 'bottomRight', label: 'Bottom Right Corner', isCorner: true },
   { area: 'tableau', key: 'top', label: 'Top Pile', isCorner: false },
   { area: 'tableau', key: 'left', label: 'Left Pile', isCorner: false },
-  { area: 'tableau', key: 'center', label: 'Center Pile', isCorner: false },
   { area: 'tableau', key: 'right', label: 'Right Pile', isCorner: false },
   { area: 'tableau', key: 'bottom', label: 'Bottom Pile', isCorner: false },
 ]
@@ -68,7 +67,6 @@ function createEmptyPiles() {
     tableau: {
       top: [],
       left: [],
-      center: [],
       right: [],
       bottom: [],
     },
@@ -119,10 +117,47 @@ function canPlaceCardOnTarget(card, cards, isCorner) {
   const topCard = getTopCard(cards)
 
   if (!topCard) {
-    return isCorner && card.rank === 'K'
+    return isCorner ? card.rank === 'K' : true
   }
 
   return card.color !== topCard.color && card.value === topCard.value - 1
+}
+
+function isValidDescendingRun(cards) {
+  if (cards.length <= 1) {
+    return true
+  }
+
+  for (let index = 0; index < cards.length - 1; index += 1) {
+    const current = cards[index]
+    const next = cards[index + 1]
+
+    if (current.color === next.color || current.value !== next.value + 1) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function getMovableRunForTarget(sourcePile, targetCards, isCorner) {
+  for (let startIndex = 0; startIndex < sourcePile.length; startIndex += 1) {
+    const run = sourcePile.slice(startIndex)
+    const leadCard = run[0]
+
+    if (!isValidDescendingRun(run)) {
+      continue
+    }
+
+    if (canPlaceCardOnTarget(leadCard, targetCards, isCorner)) {
+      return {
+        startIndex,
+        run,
+      }
+    }
+  }
+
+  return null
 }
 
 function getLegalTargetsForCard(card, piles) {
@@ -203,6 +238,77 @@ function applyHandMove(state, actor, cardId, targetArea, targetKey) {
   return finishIfDraw(finishIfWinner(nextState, actor))
 }
 
+export function attemptPlayerPileMove(state, sourceArea, sourceKey, targetArea, targetKey) {
+  if (state.phase !== 'playerAction' || state.turn !== 'player') {
+    return {
+      ...state,
+      status: 'You can only move board cards during your action phase.',
+    }
+  }
+
+  if (sourceArea === targetArea && sourceKey === targetKey) {
+    return state
+  }
+
+  const sourcePile = state.piles[sourceArea]?.[sourceKey]
+
+  if (!sourcePile || sourcePile.length === 0) {
+    return {
+      ...state,
+      status: 'There is no card in that pile to move.',
+    }
+  }
+
+  const target = TARGETS.find((entry) => entry.area === targetArea && entry.key === targetKey)
+  const targetPile = state.piles[targetArea]?.[targetKey]
+
+  if (!target || !targetPile) {
+    return state
+  }
+
+  const movableRun = getMovableRunForTarget(sourcePile, targetPile, target.isCorner)
+
+  if (!movableRun) {
+    return {
+      ...state,
+      status: `That board move is not legal. ${target?.isCorner ? 'Only a king can start an empty corner.' : 'Cards must descend in rank and alternate color.'}`,
+    }
+  }
+
+  const nextPiles = clonePiles(state.piles)
+  nextPiles[sourceArea][sourceKey] = nextPiles[sourceArea][sourceKey].slice(0, movableRun.startIndex)
+  nextPiles[targetArea][targetKey].push(...movableRun.run)
+
+  const movedCards = movableRun.run.length
+  const leadCard = movableRun.run[0]
+
+  const nextState = {
+    ...state,
+    piles: nextPiles,
+    playedThisTurn: state.playedThisTurn + 1,
+    status: `Moved ${movedCards > 1 ? `${movedCards} cards starting with ${leadCard.label}` : leadCard.label} to ${target.label}.`,
+  }
+
+  return finishIfDraw(finishIfWinner(nextState, 'player'))
+}
+
+export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey) {
+  const sourcePile = piles[sourceArea]?.[sourceKey]
+
+  if (!sourcePile || sourcePile.length === 0) {
+    return []
+  }
+
+  return TARGETS.filter((target) => {
+    if (target.area === sourceArea && target.key === sourceKey) {
+      return false
+    }
+
+    const targetPile = piles[target.area][target.key]
+    return Boolean(getMovableRunForTarget(sourcePile, targetPile, target.isCorner))
+  }).map((target) => `${target.area}:${target.key}`)
+}
+
 function pickHardMove(moves) {
   return [...moves].sort((left, right) => {
     const leftCornerBias = left.target.isCorner ? 100 : 0
@@ -235,8 +341,7 @@ export function dealKingsInTheCorner(state) {
 
   const [playerHand, afterPlayerDeal] = takeCards(workingDeck, 7)
   const [computerHand, afterComputerDeal] = takeCards(afterPlayerDeal, 7)
-  const [centerPile, afterCenterDeal] = takeCards(afterComputerDeal, 1)
-  const [topPile, afterTopDeal] = takeCards(afterCenterDeal, 1)
+  const [topPile, afterTopDeal] = takeCards(afterComputerDeal, 1)
   const [bottomPile, afterBottomDeal] = takeCards(afterTopDeal, 1)
   const [leftPile, afterLeftDeal] = takeCards(afterBottomDeal, 1)
   const [rightPile, deck] = takeCards(afterLeftDeal, 1)
@@ -252,7 +357,6 @@ export function dealKingsInTheCorner(state) {
       tableau: {
         top: topPile,
         left: leftPile,
-        center: centerPile,
         right: rightPile,
         bottom: bottomPile,
       },
