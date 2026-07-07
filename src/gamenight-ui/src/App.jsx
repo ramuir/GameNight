@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import { KingsInTheCornerGame } from './games/kingsInTheCorner/KingsInTheCornerGame.jsx'
 
 const games = {
   none: {
@@ -8,7 +9,7 @@ const games = {
   },
   kingsInTheCorner: {
     title: 'Kings in the Corner',
-    description: 'Welcome to Kings in the Corner. This game screen is ready for the next step.',
+    description: 'Open the first playable proof of concept for Kings in the Corner.',
   },
 }
 
@@ -17,27 +18,40 @@ function App() {
   const activeGame = games[selectedGame]
 
   return (
-    <main className="app-shell">
-      <section className="selector-card">
-        <label className="field-label" htmlFor="game-selector">
-          Select a game
-        </label>
-        <select
-          id="game-selector"
-          className="game-select"
-          value={selectedGame}
-          onChange={(event) => setSelectedGame(event.target.value)}
-        >
-          <option value="none">GameNight Home</option>
-          <option value="kingsInTheCorner">Kings in the Corner</option>
-        </select>
-
-        <div className="game-panel">
-          <h1>{activeGame.title}</h1>
-          <p>{activeGame.description}</p>
+    <div className="app-shell">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">GameNight</p>
+          <h1 className="app-title">Choose a game</h1>
         </div>
-      </section>
-    </main>
+
+        <div className="selector-panel">
+          <label className="field-label" htmlFor="game-selector">
+            Game
+          </label>
+          <select
+            id="game-selector"
+            className="game-select"
+            value={selectedGame}
+            onChange={(event) => setSelectedGame(event.target.value)}
+          >
+            <option value="none">GameNight Home</option>
+            <option value="kingsInTheCorner">Kings in the Corner</option>
+          </select>
+        </div>
+      </header>
+
+      <main className="page-shell">
+        {selectedGame === 'kingsInTheCorner' ? (
+          <KingsInTheCornerGame />
+        ) : (
+          <section className="home-card">
+            <h2>{activeGame.title}</h2>
+            <p>{activeGame.description}</p>
+          </section>
+        )}
+      </main>
+    </div>
   )
 }
 
