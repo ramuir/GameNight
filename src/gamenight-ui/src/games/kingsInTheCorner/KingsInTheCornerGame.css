@@ -45,13 +45,15 @@
 .control-field select,
 .deck-actions button,
 .pile-slot,
-.player-card {
+.player-card,
+.rules-toggle {
   border-radius: 12px;
 }
 
 .control-field select,
 .deck-actions button,
-.player-card {
+.player-card,
+.rules-toggle {
   border: 1px solid #cbd5e1;
   background: #f8fafc;
 }
@@ -60,6 +62,30 @@
   width: 100%;
   padding: 7px 10px;
   font-size: 0.82rem;
+}
+
+.rules-toggle {
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.level-rules {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  color: #1e3a8a;
+  display: grid;
+  gap: 5px;
+}
+
+.level-rules p {
+  margin: 0;
+  line-height: 1.25;
 }
 
 .deck-actions {

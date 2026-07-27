@@ -43,3 +43,30 @@ Stop UI when finished:
 
 - Press Ctrl+C in the terminal running the UI.
 - If needed, close the terminal tab.
+
+Security checks:
+
+```bash
+cd src/gamenight-ui
+npm run security:check
+```
+
+Dependency audit only:
+
+```bash
+cd src/gamenight-ui
+npm run audit:check
+```
+
+## Rulebook
+
+- Kings In The Corner implementation rules: `rulebook/kings-in-the-corner-rulebook.md`
+- Legacy prompt notes are kept in `KingsInTheCorner.md` as non-authoritative draft context.
+
+## Secure Change Standards
+
+- Do not commit secrets, tokens, passwords, connection strings, or personal data.
+- Keep local-only environment and override files untracked; use ignored `.env.*` or `*.local` files for local configuration.
+- Run `npm run security:check` before merging dependency or configuration changes.
+- Keep security and dependency remediation isolated from unrelated gameplay or UI changes when possible.
+- Prefer local or offline assets over introducing remote dependencies for security-sensitive surfaces.

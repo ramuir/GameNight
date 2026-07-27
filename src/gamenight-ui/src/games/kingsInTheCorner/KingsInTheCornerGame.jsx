@@ -12,6 +12,7 @@ import {
   runComputerTurn,
   shuffleKingsInTheCorner,
   updateDifficulty,
+  updatePlayStyle,
 } from './kingsInTheCornerLogic.js'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', {
@@ -128,6 +129,7 @@ export function KingsInTheCornerGame() {
   const [selectedSourcePile, setSelectedSourcePile] = useState(null)
   const [illegalMoveShake, setIllegalMoveShake] = useState(false)
   const [isEndPopupVisible, setIsEndPopupVisible] = useState(false)
+  const [showLevelRules, setShowLevelRules] = useState(false)
 
   const selectedCard = gameState.playerHand.find((card) => card.id === selectedCardId) ?? null
   const draggedCard = gameState.playerHand.find((card) => card.id === draggedCardId) ?? null
@@ -190,6 +192,13 @@ export function KingsInTheCornerGame() {
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
     setGameState((current) => updateDifficulty(current, event.target.value))
+  }
+
+  function handlePlayStyleChange(event) {
+    setSelectedCardId(null)
+    setDraggedSourcePile(null)
+    setSelectedSourcePile(null)
+    setGameState((current) => updatePlayStyle(current, event.target.value))
   }
 
   function handleShuffle() {
@@ -375,6 +384,39 @@ export function KingsInTheCornerGame() {
               <option value="hard">Hard</option>
             </select>
           </label>
+
+          <label className="control-field">
+            <span>Player play style</span>
+            <select value={gameState.playStyle} onChange={handlePlayStyleChange}>
+              <option value="open">Open</option>
+              <option value="forced">Forced</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="rules-toggle"
+            onClick={() => setShowLevelRules((current) => !current)}
+          >
+            {showLevelRules ? 'Hide level rules' : 'Show level rules'}
+          </button>
+
+          {showLevelRules && (
+            <div className="level-rules" aria-live="polite">
+              <p>
+                <strong>Play style:</strong> Open lets you end your turn early. Forced requires all legal plays before pressing Go.
+              </p>
+              <p>
+                <strong>Easy:</strong> Computer plays all legal moves each turn.
+              </p>
+              <p>
+                <strong>Medium:</strong> Computer prefers lower-opponent-benefit moves and must play when hand size is {`>=`} 10.
+              </p>
+              <p>
+                <strong>Hard:</strong> Computer uses stricter lower-opponent-benefit filtering and must play when hand size is {`>=`} 12.
+              </p>
+            </div>
+          )}
 
         </div>
       </div>

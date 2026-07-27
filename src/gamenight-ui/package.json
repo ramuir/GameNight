@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test",
+    "audit:check": "npm audit --audit-level=high",
+    "security:scan": "node ../../scripts/security-check.mjs",
+    "security:check": "npm run audit:check && npm run security:scan"
   },
   "dependencies": {
     "react": "^19.2.7",
