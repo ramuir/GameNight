@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import './App.css'
 import { KingsInTheCornerGame } from './games/kingsInTheCorner/KingsInTheCornerGame.jsx'
+import gameNightNeon from './assets/hero.png'
 
 const games = {
   none: {
-    title: 'Welcome to GameNight',
-    description: 'Choose a game from the menu to jump into a game space.',
+    title: 'The table is hot. Pick your game and play the edge.',
+    description:
+      'GameNight is built like a late-table arcade: fast choices, readable boards, and high-contrast play cues that stay sharp through every turn.',
   },
   kingsInTheCorner: {
     title: 'Kings in the Corner',
@@ -14,18 +16,25 @@ const games = {
 }
 
 function App() {
-  const [selectedGame, setSelectedGame] = useState('none')
+  const initialGame = useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    const requestedGame = params.get('game')
+
+    return requestedGame && Object.hasOwn(games, requestedGame) ? requestedGame : 'none'
+  }, [])
+  const [selectedGame, setSelectedGame] = useState(initialGame)
   const activeGame = games[selectedGame]
+  const isGameActive = selectedGame === 'kingsInTheCorner'
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
+    <div className={`app-shell${isGameActive ? ' app-shell-game' : ''}`}>
+      <header className={`app-header${isGameActive ? ' app-header-game' : ''}`}>
         <div>
           <p className="eyebrow">GameNight</p>
-          <h1 className="app-title">Choose a game</h1>
+          <h1 className="app-title">{isGameActive ? 'Kings in the Corner' : 'Choose a game'}</h1>
         </div>
 
-        <div className="selector-panel">
+        <div className={`selector-panel${isGameActive ? ' selector-panel-game' : ''}`}>
           <label className="field-label" htmlFor="game-selector">
             Game
           </label>
@@ -46,8 +55,20 @@ function App() {
           <KingsInTheCornerGame />
         ) : (
           <section className="home-card">
-            <h2>{activeGame.title}</h2>
-            <p>{activeGame.description}</p>
+            <div className="hero-copy">
+              <p className="hero-kicker">Night Table Series</p>
+              <h2>{activeGame.title}</h2>
+              <p>{activeGame.description}</p>
+              <div className="hero-meta" aria-label="Game features">
+                <span>Local assets only</span>
+                <span>Keyboard ready</span>
+                <span>Turn-first UI</span>
+              </div>
+            </div>
+
+            <div className="hero-visual" aria-hidden="true">
+              <img src={gameNightNeon} alt="" />
+            </div>
           </section>
         )}
       </main>
