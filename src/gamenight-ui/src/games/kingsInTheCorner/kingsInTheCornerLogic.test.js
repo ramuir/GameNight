@@ -300,3 +300,87 @@ test('hard can use board move fallback to unlock a hand play', () => {
   assert.equal(next.winner, 'computer')
   assert.equal(next.computerHand.length, 0)
 })
+
+test('hard does not vacate a corner king into an empty tableau lane', () => {
+  const state = playerActionState({
+    difficulty: 'hard',
+    deck: [],
+    computerHand: [card('c1', '2', 2, 'clubs', 'black')],
+    playerHand: [card('p1', '2', 2, 'spades', 'black')],
+    piles: piles({
+      top: [],
+      left: [card('l1', 'A', 1, 'hearts', 'red')],
+      right: [card('r1', 'A', 1, 'diamonds', 'red')],
+      bottom: [card('b1', 'A', 1, 'spades', 'black')],
+    }, {
+      topLeft: [card('k1', 'K', 13, 'clubs', 'black')],
+      topRight: [card('k2', 'A', 1, 'hearts', 'red')],
+      bottomLeft: [card('k3', 'A', 1, 'spades', 'black')],
+      bottomRight: [card('k4', 'A', 1, 'diamonds', 'red')],
+    }),
+  })
+
+  const next = runComputerTurn(state)
+
+  assert.equal(next.piles.corners.topLeft.length, 1)
+  assert.equal(next.piles.corners.topLeft[0].id, 'k1')
+  assert.ok(!next.status.includes('moved KC run to'))
+})
+
+test('hard does not shuffle a king from one corner to another open corner', () => {
+  const state = playerActionState({
+    difficulty: 'hard',
+    deck: [],
+    computerHand: [card('c1', '2', 2, 'clubs', 'black')],
+    playerHand: [card('p1', '2', 2, 'spades', 'black')],
+    piles: piles({
+      top: [card('t1', 'A', 1, 'hearts', 'red')],
+      left: [card('l1', 'A', 1, 'diamonds', 'red')],
+      right: [card('r1', 'A', 1, 'clubs', 'black')],
+      bottom: [card('b1', 'A', 1, 'spades', 'black')],
+    }, {
+      topLeft: [card('k1', 'K', 13, 'clubs', 'black')],
+      topRight: [],
+      bottomLeft: [],
+      bottomRight: [],
+    }),
+  })
+
+  const next = runComputerTurn(state)
+
+  assert.equal(next.piles.corners.topLeft.length, 1)
+  assert.equal(next.piles.corners.topLeft[0].id, 'k1')
+  assert.equal(next.piles.corners.topRight.length, 0)
+  assert.equal(next.piles.corners.bottomLeft.length, 0)
+  assert.equal(next.piles.corners.bottomRight.length, 0)
+  assert.ok(!next.status.includes('moved KC run to Top Right Corner'))
+  assert.ok(!next.status.includes('moved KC run to Bottom Left Corner'))
+  assert.ok(!next.status.includes('moved KC run to Bottom Right Corner'))
+})
+
+test('hard fills an empty tableau pile when a legal hand move exists', () => {
+  const state = playerActionState({
+    difficulty: 'hard',
+    deck: [card('d1', '4', 4, 'hearts', 'red')],
+    computerHand: [
+      card('c1', '9', 9, 'diamonds', 'red'),
+      card('c2', '3', 3, 'clubs', 'black'),
+    ],
+    playerHand: [card('p1', '7', 7, 'spades', 'black')],
+    piles: piles({
+      top: [],
+      left: [card('l1', '10', 10, 'clubs', 'black')],
+      right: [card('r1', 'A', 1, 'spades', 'black')],
+      bottom: [card('b1', 'A', 1, 'diamonds', 'red')],
+    }, {
+      topLeft: [card('k1', 'A', 1, 'clubs', 'black')],
+      topRight: [card('k2', 'A', 1, 'hearts', 'red')],
+      bottomLeft: [card('k3', 'A', 1, 'spades', 'black')],
+      bottomRight: [card('k4', 'A', 1, 'diamonds', 'red')],
+    }),
+  })
+
+  const next = runComputerTurn(state)
+
+  assert.ok(next.piles.tableau.top.length > 0)
+})

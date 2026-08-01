@@ -193,6 +193,12 @@ function getLegalMovesForHand(cards, piles) {
   )
 }
 
+function getEmptyTableauHandMoves(legalMoves, piles) {
+  return legalMoves.filter(
+    (move) => move.target.area === 'tableau' && piles.tableau[move.target.key].length === 0,
+  )
+}
+
 function getVisibleBoardCards(piles) {
   return [
     ...Object.values(piles.tableau).flat(),
@@ -327,6 +333,28 @@ function getLegalBoardMoves(piles) {
   return moves
 }
 
+function isStrategicBoardMove(move) {
+  // Corner-origin moves are usually fake progress (corner->corner shuffles or vacating kings).
+  if (move.source.isCorner) {
+    return false
+  }
+
+  return true
+}
+
+function getStrategicBoardMoves(piles) {
+  return getLegalBoardMoves(piles).filter(isStrategicBoardMove)
+}
+
+function getPilesSignature(piles) {
+  const encode = (cards) => cards.map((card) => card.id).join(',')
+
+  return [
+    ...Object.entries(piles.tableau).map(([key, cards]) => `t:${key}:${encode(cards)}`),
+    ...Object.entries(piles.corners).map(([key, cards]) => `c:${key}:${encode(cards)}`),
+  ].join('|')
+}
+
 function pickBestBoardMove(moves, previousMove = null) {
   if (!moves.length) {
     return null
@@ -376,6 +404,39 @@ function applyBoardMove(state, move) {
   return {
     ...state,
     piles: nextPiles,
+  }
+}
+
+function playAvailableBoardMoves(state, actions, moveLimit, previousMove = null) {
+  let nextState = state
+  let lastMove = previousMove
+  let played = 0
+  const seenSignatures = new Set()
+
+  while (played < moveLimit) {
+    const signature = getPilesSignature(nextState.piles)
+
+    if (seenSignatures.has(signature)) {
+      break
+    }
+
+    seenSignatures.add(signature)
+    const boardMove = pickBestBoardMove(getStrategicBoardMoves(nextState.piles), lastMove)
+
+    if (!boardMove) {
+      break
+    }
+
+    nextState = applyBoardMove(nextState, boardMove)
+    actions.push(`moved ${boardMove.leadCard.label} run to ${boardMove.target.label}`)
+    lastMove = boardMove
+    played += 1
+  }
+
+  return {
+    nextState,
+    played,
+    lastMove,
   }
 }
 
@@ -732,43 +793,84 @@ export function runComputerTurn(state) {
       legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
     }
   } else {
+    const MAX_BOARD_MOVES_PER_TURN = 64
     let boardMovesThisTurn = 0
     let previousBoardMove = null
 
-    while (legalMoves.length > 0 || (nextState.deck.length === 0 && boardMovesThisTurn < 8)) {
-      if (legalMoves.length === 0) {
-        const boardMove = pickBestBoardMove(getLegalBoardMoves(nextState.piles), previousBoardMove)
+    // Hard mode should not leave free board progress behind when a board move is available.
+    if (boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
+      const boardSweep = playAvailableBoardMoves(
+        nextState,
+        actions,
+        MAX_BOARD_MOVES_PER_TURN - boardMovesThisTurn,
+        previousBoardMove,
+      )
+      nextState = boardSweep.nextState
+      boardMovesThisTurn += boardSweep.played
+      previousBoardMove = boardSweep.lastMove
+      legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+    }
 
-        if (!boardMove) {
+    while (legalMoves.length > 0 || boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
+      if (legalMoves.length === 0) {
+        const boardSweep = playAvailableBoardMoves(
+          nextState,
+          actions,
+          MAX_BOARD_MOVES_PER_TURN - boardMovesThisTurn,
+          previousBoardMove,
+        )
+        if (boardSweep.played === 0) {
           break
         }
-
-        nextState = applyBoardMove(nextState, boardMove)
-        actions.push(`moved ${boardMove.leadCard.label} run to ${boardMove.target.label}`)
-        previousBoardMove = boardMove
-        boardMovesThisTurn += 1
+        nextState = boardSweep.nextState
+        previousBoardMove = boardSweep.lastMove
+        boardMovesThisTurn += boardSweep.played
         legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
         continue
       }
 
       const scoredMoves = legalMoves.map((move) => scoreComputerMove(nextState, move, 4))
+      const forcedTableauFillMoves = getEmptyTableauHandMoves(legalMoves, nextState.piles)
+      const forcedTableauFillScored = scoredMoves.filter((entry) =>
+        forcedTableauFillMoves.some(
+          (forcedMove) =>
+            forcedMove.card.id === entry.move.card.id
+            && forcedMove.target.area === entry.move.target.area
+            && forcedMove.target.key === entry.move.target.key,
+        ),
+      )
       const lowRiskMoves = scoredMoves.filter((entry) => entry.risk <= HARD_PLAY_HELP_THRESHOLD)
       const fallbackMoves = scoredMoves.filter((entry) => entry.score >= HARD_FALLBACK_MIN_SCORE)
       const mustPlay =
         nextState.computerHand.length >= HARD_FORCED_PLAY_HAND_SIZE
         || shouldForceProgressMove(nextState, legalMoves)
       const selected = choosePolicyMove(
-        lowRiskMoves.length > 0
-          ? lowRiskMoves
-          : fallbackMoves.length > 0
-            ? fallbackMoves
-            : mustPlay
-              ? scoredMoves
-              : [],
+        forcedTableauFillScored.length > 0
+          ? forcedTableauFillScored
+          : lowRiskMoves.length > 0
+            ? lowRiskMoves
+            : fallbackMoves.length > 0
+              ? fallbackMoves
+              : mustPlay
+                ? scoredMoves
+                : [],
       )
 
       if (!selected) {
-        break
+        const boardSweep = playAvailableBoardMoves(
+          nextState,
+          actions,
+          MAX_BOARD_MOVES_PER_TURN - boardMovesThisTurn,
+          previousBoardMove,
+        )
+        if (boardSweep.played === 0) {
+          break
+        }
+        nextState = boardSweep.nextState
+        previousBoardMove = boardSweep.lastMove
+        boardMovesThisTurn += boardSweep.played
+        legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+        continue
       }
 
       nextState = applyHandMove(nextState, 'computer', selected.move.card.id, selected.move.target.area, selected.move.target.key)
@@ -777,6 +879,18 @@ export function runComputerTurn(state) {
 
       if (nextState.phase === 'finished') {
         return nextState
+      }
+
+      if (boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
+        const boardSweep = playAvailableBoardMoves(
+          nextState,
+          actions,
+          MAX_BOARD_MOVES_PER_TURN - boardMovesThisTurn,
+          previousBoardMove,
+        )
+        nextState = boardSweep.nextState
+        previousBoardMove = boardSweep.lastMove
+        boardMovesThisTurn += boardSweep.played
       }
 
       legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
