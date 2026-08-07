@@ -11,6 +11,7 @@ import {
   getPlayerEndTurnError,
   runComputerTurn,
   shuffleKingsInTheCorner,
+  getPlayerRoundWinDelta,
   updateDifficulty,
   updatePlayStyle,
 } from './kingsInTheCornerLogic.js'
@@ -46,6 +47,17 @@ function getCardImage(card) {
   const matchedPath = `../../assets/${baseName}.png`
 
   return CARD_IMAGES[matchedPath] ?? ''
+}
+
+const DIFFICULTY_ORDER = ['easy', 'medium', 'hard']
+const PLAY_STYLE_ORDER = ['open', 'forced']
+
+function ControlCycleButton({ children, onClick }) {
+  return (
+    <button type="button" className="turn-pill turn-pill-button" onClick={onClick}>
+      {children}
+    </button>
+  )
 }
 
 function PileSlot({
@@ -137,7 +149,7 @@ export function KingsInTheCornerGame() {
   const [selectedSourcePile, setSelectedSourcePile] = useState(null)
   const [illegalMoveShake, setIllegalMoveShake] = useState(false)
   const [isEndPopupVisible, setIsEndPopupVisible] = useState(false)
-  const [showLevelRules, setShowLevelRules] = useState(false)
+  const [playerWins, setPlayerWins] = useState(0)
   const [isPlayerHandOverflowing, setIsPlayerHandOverflowing] = useState(false)
   const [isComputerHandOverflowing, setIsComputerHandOverflowing] = useState(false)
   const playerHandRowRef = useRef(null)
@@ -167,6 +179,16 @@ export function KingsInTheCornerGame() {
         : gameState.winner === 'draw'
           ? 'Draw Game'
           : 'Round Complete'
+  const winCount = playerWins
+
+  useEffect(() => {
+    const winDelta = getPlayerRoundWinDelta(gameState)
+    if (winDelta === 0) {
+      return
+    }
+
+    setPlayerWins((currentWins) => currentWins + winDelta)
+  }, [gameState.phase, gameState.winner])
 
   useEffect(() => {
     if (previewMode !== 'dealt') {
@@ -248,18 +270,18 @@ export function KingsInTheCornerGame() {
     }, 320)
   }
 
-  function handleDifficultyChange(event) {
+  function handleDifficultyChange(nextDifficulty) {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => updateDifficulty(current, event.target.value))
+    setGameState((current) => updateDifficulty(current, nextDifficulty))
   }
 
-  function handlePlayStyleChange(event) {
+  function handlePlayStyleChange(nextPlayStyle) {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => updatePlayStyle(current, event.target.value))
+    setGameState((current) => updatePlayStyle(current, nextPlayStyle))
   }
 
   function handleShuffle() {
@@ -426,72 +448,42 @@ export function KingsInTheCornerGame() {
     })
   }
 
+  function dismissEndPopup() {
+    setIsEndPopupVisible(false)
+  }
+
   return (
-    <section className={`kings-game-shell${illegalMoveShake ? ' illegal-move-shake' : ''}`}>
-      <section className="kings-region kings-region-header">
-        <div className="status-bar">
-          <span>{gameState.phase}</span>
-          <span>Deck {gameState.deck.length}</span>
-        </div>
-        <p className="status-message">{gameState.status}</p>
-      </section>
+    <div className="game-shell-with-badge">
+      <section className={`kings-game-shell${illegalMoveShake ? ' illegal-move-shake' : ''}`}>
+        <section className="kings-region kings-region-operations" aria-label="Turn and round settings">
+        <span className="turn-pill">Deck: {gameState.deck.length}</span>
 
-      <section className="kings-region kings-region-operations" aria-label="Turn and round settings">
-        <span className="turn-pill" aria-live="polite">
-          {gameState.turn === 'player' ? 'Player Turn' : 'Computer Turn'}
-        </span>
-
-        <label className="control-field control-field-compact">
-          <span>Difficulty</span>
-          <select value={gameState.difficulty} onChange={handleDifficultyChange}>
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>
-
-        <label className="control-field control-field-compact">
-          <span>Play style</span>
-          <select value={gameState.playStyle} onChange={handlePlayStyleChange}>
-            <option value="open">Open</option>
-            <option value="forced">Forced</option>
-          </select>
-        </label>
-
-        <button
-          type="button"
-          className="rules-toggle rules-toggle-inline"
-          onClick={() => setShowLevelRules((current) => !current)}
+        <ControlCycleButton
+          onClick={() => {
+            const currentIndex = DIFFICULTY_ORDER.indexOf(gameState.difficulty)
+            const nextIndex = (currentIndex + 1) % DIFFICULTY_ORDER.length
+            handleDifficultyChange(DIFFICULTY_ORDER[nextIndex])
+          }}
         >
-          {showLevelRules ? 'Hide rules' : 'Show rules'}
-        </button>
+          Difficulty: {gameState.difficulty === 'easy' ? 'Easy' : gameState.difficulty === 'hard' ? 'Hard' : 'Medium'}
+        </ControlCycleButton>
+
+        <ControlCycleButton
+          onClick={() => {
+            const currentIndex = PLAY_STYLE_ORDER.indexOf(gameState.playStyle)
+            const nextIndex = (currentIndex + 1) % PLAY_STYLE_ORDER.length
+            handlePlayStyleChange(PLAY_STYLE_ORDER[nextIndex])
+          }}
+        >
+          Style: {gameState.playStyle === 'forced' ? 'Forced' : 'Open'}
+        </ControlCycleButton>
       </section>
 
-      {showLevelRules && (
-        <div className="level-rules" aria-live="polite">
-          <p>
-            <strong>Play style:</strong> Open lets you end your turn early. Forced requires all legal plays before pressing Go.
-          </p>
-          <p>
-            <strong>Easy:</strong> Computer plays all legal moves each turn.
-          </p>
-          <p>
-            <strong>Medium:</strong> Computer prefers lower-opponent-benefit moves and must play when hand size is {`>=`} 10.
-          </p>
-          <p>
-            <strong>Hard:</strong> Computer uses stricter lower-opponent-benefit filtering and must play when hand size is {`>=`} 12.
-          </p>
-        </div>
-      )}
+      <p className="status-message">{gameState.status}</p>
 
       <section className="kings-main-row">
         <section className="kings-region kings-region-player" aria-label="Your hand">
           <div className="hand-panel hand-panel-player">
-            <div className="hand-panel-header">
-              <h3>Your Hand</h3>
-              <span>{gameState.playerHand.length} cards</span>
-            </div>
-
             <div
               className={`hand-row hand-row-player${isPlayerHandOverflowing ? ' hand-row-overflowing' : ''}`}
               ref={playerHandRowRef}
@@ -618,10 +610,6 @@ export function KingsInTheCornerGame() {
 
         <section className="kings-region kings-region-opponent" aria-label="Computer hand">
           <div className="hand-panel hand-panel-computer">
-            <div className="hand-panel-header">
-              <h3>Computer Hand</h3>
-              <span>{gameState.computerHand.length} cards</span>
-            </div>
             <HiddenCards
               count={gameState.computerHand.length}
               rowRef={computerHandRowRef}
@@ -659,14 +647,21 @@ export function KingsInTheCornerGame() {
       </section>
 
       {isEndPopupVisible && (
-        <div className="end-popup-backdrop" role="status" aria-live="polite">
-          <div className="end-popup-card">
+        <div className="end-popup-backdrop" role="status" aria-live="polite" onClick={dismissEndPopup}>
+          <div className="end-popup-card" onClick={dismissEndPopup} role="button" tabIndex={0} onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              dismissEndPopup()
+            }
+          }}>
             <h3>{winnerMessage}</h3>
             <p>{gameState.status}</p>
-            <p className="end-popup-hint">Press any key to close</p>
+            <p className="end-popup-hint">Click to close</p>
           </div>
         </div>
       )}
-    </section>
+      </section>
+      <span className="game-shell-badge" aria-label={`${winCount} win${winCount === 1 ? '' : 's'}`}>{winCount}</span>
+    </div>
   )
 }
