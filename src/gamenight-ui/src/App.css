@@ -6,12 +6,12 @@
 }
 
 .app-shell-game {
-  min-height: 100dvh;
-  height: 100dvh;
+  min-height: 100svh;
+  height: 100svh;
   display: flex;
   flex-direction: column;
   padding-top: 8px;
-  padding-bottom: 8px;
+  padding-bottom: 14px;
   overflow: visible;
 }
 
@@ -25,11 +25,12 @@
 }
 
 .app-header-game {
-  width: min(1180px, 100%);
+  width: 100%;
+  max-width: none;
   box-sizing: border-box;
   margin-bottom: 8px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
   border-radius: var(--radius-2);
@@ -145,11 +146,12 @@
 }
 
 .app-shell-game .page-shell {
-  width: min(1180px, 100%);
+  width: 100%;
+  max-width: none;
   flex: 1;
   min-height: 0;
   display: flex;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .home-card {
@@ -268,7 +270,7 @@
   }
 
   .app-header-game {
-    grid-template-columns: 1fr;
+    justify-content: stretch;
     align-items: stretch;
   }
 
@@ -312,7 +314,7 @@
   .app-header-game {
     margin-bottom: 6px;
     padding: 6px 10px;
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+    justify-content: space-between;
   }
 
   .app-header-game .app-title {

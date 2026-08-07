@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import './App.css'
 import { KingsInTheCornerGame } from './games/kingsInTheCorner/KingsInTheCornerGame.jsx'
+import { ConnectFourGame } from './games/connectFour/ConnectFourGame.jsx'
 import gameNightNeon from './assets/hero.png'
 
 const games = {
@@ -13,6 +14,10 @@ const games = {
     title: 'Kings in the Corner',
     description: 'Open the first playable proof of concept for Kings in the Corner.',
   },
+  connectFour: {
+    title: 'Connect Four',
+    description: 'Preview the structure-first Connect Four board layout and regions.',
+  },
 }
 
 function App() {
@@ -24,14 +29,15 @@ function App() {
   }, [])
   const [selectedGame, setSelectedGame] = useState(initialGame)
   const activeGame = games[selectedGame]
-  const isGameActive = selectedGame === 'kingsInTheCorner'
+  const isGameActive = selectedGame !== 'none'
+  const activeGameTitle = selectedGame === 'none' ? 'Choose a game' : activeGame.title
 
   return (
     <div className={`app-shell${isGameActive ? ' app-shell-game' : ''}`}>
       <header className={`app-header${isGameActive ? ' app-header-game' : ''}`}>
         <div>
           <p className="eyebrow">GameNight</p>
-          <h1 className="app-title">{isGameActive ? 'Kings in the Corner' : 'Choose a game'}</h1>
+          <h1 className="app-title">{activeGameTitle}</h1>
         </div>
 
         <div className={`selector-panel${isGameActive ? ' selector-panel-game' : ''}`}>
@@ -46,6 +52,7 @@ function App() {
           >
             <option value="none">GameNight Home</option>
             <option value="kingsInTheCorner">Kings in the Corner</option>
+            <option value="connectFour">Connect Four</option>
           </select>
         </div>
       </header>
@@ -53,6 +60,8 @@ function App() {
       <main className="page-shell">
         {selectedGame === 'kingsInTheCorner' ? (
           <KingsInTheCornerGame />
+        ) : selectedGame === 'connectFour' ? (
+          <ConnectFourGame />
         ) : (
           <section className="home-card">
             <div className="hero-copy">
