@@ -28,3 +28,4 @@ dist-ssr
 
 # Ignore temporary files and directories created by the operating system
 src/assets/temp
+src/assets/evidence
