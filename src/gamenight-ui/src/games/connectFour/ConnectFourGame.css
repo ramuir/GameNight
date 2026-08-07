@@ -1,3 +1,10 @@
+.game-shell-with-badge {
+  position: relative;
+  width: min(100%, 860px);
+  margin: 0 auto;
+  padding-right: clamp(1.35rem, 2vw, 2rem);
+}
+
 .connect-four-shell {
   background:
     radial-gradient(circle at 12% 8%, rgba(48, 229, 255, 0.12), transparent 32%),
@@ -11,7 +18,7 @@
   padding: clamp(6px, 0.8vw, 10px) clamp(6px, 0.8vw, 10px) clamp(14px, 2vh, 20px);
   min-height: 0;
   height: 100%;
-  width: min(100%, 980px);
+  width: min(100%, 860px);
   margin: 0 auto;
   min-width: 0;
   display: grid;
@@ -44,6 +51,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
   border-radius: 999px;
   padding: 3px 8px;
   border: 1px solid rgba(48, 229, 255, 0.42);
@@ -53,6 +61,24 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.game-shell-badge {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  background: rgba(6, 12, 24, 0.96);
+  border: 1px solid rgba(255, 79, 149, 0.42);
+  color: #ff8fc0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 0 16px rgba(255, 79, 149, 0.14);
 }
 
 .status-pill-button {

@@ -53,6 +53,7 @@ export function ConnectFourGame() {
   const [undoQueue, setUndoQueue] = useState([])
   const [dropProgress, setDropProgress] = useState(0)
   const [landedSlotId, setLandedSlotId] = useState(null)
+  const [playerWins, setPlayerWins] = useState(0)
   const [isComputerThinking, setIsComputerThinking] = useState(false)
   const [impactBlinkSlotId, setImpactBlinkSlotId] = useState(null)
   const boardGridRef = useRef(null)
@@ -63,6 +64,14 @@ export function ConnectFourGame() {
   const canUndo = !isAnimating && !isComputerThinking && gameState.history?.length > 0
   const statusText = getStatusText(gameState)
   const winnerLabel = gameState.winner ? (gameState.winner === 'red' ? 'Red' : 'Green') : null
+
+  useEffect(() => {
+    if (gameState.winner !== 'red') {
+      return
+    }
+
+    setPlayerWins((currentWins) => currentWins + 1)
+  }, [gameState.winner])
 
   useEffect(() => {
     if (undoAnimation) {
@@ -411,7 +420,8 @@ export function ConnectFourGame() {
   }
 
   return (
-    <section className="connect-four-shell" aria-label="Connect Four board">
+    <div className="game-shell-with-badge">
+      <section className="connect-four-shell" aria-label="Connect Four board">
       <section className="connect-four-status" aria-live="polite">
         <span className="status-pill">Turn: {activePlayer === 'red' ? 'Red' : 'Green'}</span>
         <button type="button" className="status-pill status-pill-button" onClick={handleDifficultyChange}>
@@ -480,6 +490,8 @@ export function ConnectFourGame() {
       </section>
 
       <p className="connect-four-outcome" aria-live="polite">{statusText}</p>
-    </section>
+      </section>
+      <span className="game-shell-badge" aria-label={`${playerWins} win${playerWins === 1 ? '' : 's'}`}>{playerWins}</span>
+    </div>
   )
 }

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   getPlayerEndTurnError,
+  getPlayerRoundWinDelta,
   runComputerTurn,
   updateDifficulty,
   updatePlayStyle,
@@ -68,6 +69,12 @@ test('updatePlayStyle normalizes unsupported play styles to open', () => {
   assert.equal(next.playStyle, 'open')
 })
 
+test('getPlayerRoundWinDelta counts only finished rounds won by the player', () => {
+  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'finished', winner: 'player' })), 1)
+  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'finished', winner: 'computer' })), 0)
+  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'playerAction', winner: null })), 0)
+})
+
 test('forced play style blocks ending turn when any legal move exists', () => {
   const playerHand = [card('p1', '9', 9, 'diamonds', 'red')]
   const state = playerActionState({
@@ -111,10 +118,14 @@ test('medium plays when legal moves exist and hand size is >= 10', () => {
   })
 
   const next = runComputerTurn(state)
-  assert.equal(next.phase, 'playerDraw')
-  assert.equal(next.turn, 'player')
-  assert.equal(next.computerHand.length, 9)
-  assert.match(next.status, /^Computer played /)
+  if (next.phase === 'finished') {
+    assert.ok(next.winner === 'computer' || next.winner === 'draw')
+  } else {
+    assert.equal(next.phase, 'playerDraw')
+    assert.equal(next.turn, 'player')
+    assert.match(next.status, /^Computer played /)
+  }
+  assert.ok(next.computerHand.length <= 9)
 })
 
 test('easy computer plays all available legal moves', () => {
@@ -177,6 +188,39 @@ test('hard must play when legal moves exist and hand size is >= 12', () => {
     assert.match(next.status, /^Computer played /)
   }
   assert.ok(next.computerHand.length <= 11)
+})
+
+test('medium cannot deadlock endgame when player is blocked and deck is empty', () => {
+  const state = playerActionState({
+    difficulty: 'medium',
+    deck: [],
+    computerHand: [
+      card('c1', '9', 9, 'diamonds', 'red'),
+      card('c2', '4', 4, 'spades', 'black'),
+    ],
+    playerHand: [card('p1', '2', 2, 'clubs', 'black')],
+    piles: piles({
+      top: [card('t1', '10', 10, 'clubs', 'black')],
+      left: [card('t2', 'A', 1, 'hearts', 'red')],
+      right: [card('t3', 'A', 1, 'spades', 'black')],
+      bottom: [card('t4', 'A', 1, 'diamonds', 'red')],
+    }, {
+      topLeft: [card('k1', 'A', 1, 'clubs', 'black')],
+      topRight: [card('k2', 'A', 1, 'hearts', 'red')],
+      bottomLeft: [card('k3', 'A', 1, 'spades', 'black')],
+      bottomRight: [card('k4', 'A', 1, 'diamonds', 'red')],
+    }),
+  })
+
+  const next = runComputerTurn(state)
+  if (next.phase === 'finished') {
+    assert.ok(next.winner === 'computer' || next.winner === 'draw')
+  } else {
+    assert.equal(next.turn, 'player')
+    assert.equal(next.phase, 'playerDraw')
+    assert.match(next.status, /^Computer played /)
+  }
+  assert.ok(next.computerHand.length < 2)
 })
 
 test('hard uses score fallback to play practical moves below forced threshold', () => {

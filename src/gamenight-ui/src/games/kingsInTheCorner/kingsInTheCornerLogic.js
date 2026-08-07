@@ -489,6 +489,10 @@ function finishIfDraw(state) {
   return state
 }
 
+export function getPlayerRoundWinDelta(state) {
+  return state.phase === 'finished' && state.winner === 'player' ? 1 : 0
+}
+
 function applyHandMove(state, actor, cardId, targetArea, targetKey) {
   const handKey = actor === 'player' ? 'playerHand' : 'computerHand'
   const hand = state[handKey]
@@ -589,7 +593,7 @@ export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey) {
 }
 
 export function createKingsInTheCornerState() {
-  return buildSetupState('easy')
+  return buildSetupState('medium')
 }
 
 export function shuffleKingsInTheCorner(state) {
@@ -776,7 +780,9 @@ export function runComputerTurn(state) {
     while (legalMoves.length > 0) {
       const scoredMoves = legalMoves.map((move) => scoreComputerMove(nextState, move, 2.5))
       const lowRiskMoves = scoredMoves.filter((entry) => entry.risk <= MEDIUM_PLAY_HELP_THRESHOLD)
-      const mustPlay = nextState.computerHand.length >= MEDIUM_FORCED_PLAY_HAND_SIZE
+      const mustPlay =
+        nextState.computerHand.length >= MEDIUM_FORCED_PLAY_HAND_SIZE
+        || shouldForceProgressMove(nextState, legalMoves)
       const selected = choosePolicyMove(lowRiskMoves.length > 0 ? lowRiskMoves : mustPlay ? scoredMoves : [])
 
       if (!selected) {
