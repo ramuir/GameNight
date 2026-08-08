@@ -1,5 +1,3 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/GameNight.Api/GameNight.Api.csproj" />
-  </Folder>
+  <Folder Name="/src/" />
 </Solution>
