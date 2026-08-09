@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test",
+    "test:e2e:liverpool": "playwright test tests/liverpool-game.spec.js",
     "audit:check": "npm audit --audit-level=high",
     "security:scan": "node ../../scripts/security-check.mjs",
     "security:check": "npm run audit:check && npm run security:scan"
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
