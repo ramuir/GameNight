@@ -121,7 +121,7 @@ test('Replay enters the selected hand pending with its dealer before a fresh Dea
 
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
   await expect(page.getByText('Hand 5 of 7')).toBeVisible()
-  await expect(page.locator('.player-seat-status')).toContainText('Dealer')
+  await expect(page.locator('.player-seat-box .opponent-name')).toContainText('Dealer')
   await expect(page.locator('.liverpool-opponent-left .opponent-name')).toContainText('Starts')
   await expect(page.locator('.player-hand-card')).toHaveCount(0)
 
@@ -184,6 +184,33 @@ for (const gainCase of gainCases) {
     })
   }
 }
+
+test('manual hand reorder persists until sort is clicked again', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=sort-stock')
+
+  const hand = page.locator('.player-hand-fan')
+  const queen = hand.locator('[data-card-id="fixture-sort-q-spades"]')
+  const three = hand.locator('[data-card-id="fixture-sort-3-hearts"]')
+
+  await queen.dragTo(three)
+
+  await expect.poll(() => hand.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.dataset.cardId))).toEqual([
+    'fixture-sort-q-spades',
+    'fixture-sort-3-hearts',
+    'fixture-sort-8h',
+    'fixture-sort-k-diamonds',
+  ])
+
+  await page.getByRole('button', { name: 'Sort suit' }).click()
+
+  await expect(hand).toHaveAttribute('data-sort-mode', 'suit')
+  await expect.poll(() => hand.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.dataset.cardId))).toEqual([
+    'fixture-sort-k-diamonds',
+    'fixture-sort-3-hearts',
+    'fixture-sort-8h',
+    'fixture-sort-q-spades',
+  ])
+})
 
 test('bought cards are immediately visible, stacked in sort order, and clickable', async ({ page }) => {
   await page.goto('/?game=liverpool&fixture=sort-buy-after-cpu1')
@@ -454,7 +481,7 @@ for (const viewport of viewports) {
     await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
     await expect(page.locator('.liverpool-table-meta')).toContainText('Hand 2 of 7')
     await expect(page.locator('.liverpool-table-meta')).toContainText('Score 0')
-    await expect(page.locator('.player-seat-status')).toContainText('Dealer')
+    await expect(page.locator('.player-seat-box .opponent-name')).toContainText('Dealer')
     await expect(page.locator('.liverpool-opponent-left .opponent-name')).toContainText('Starts')
     await expect(page.locator('.player-hand-card')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeEnabled()

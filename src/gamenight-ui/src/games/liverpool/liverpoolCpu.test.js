@@ -227,6 +227,47 @@ test('discard fallback protects a joker while any natural card remains', () => {
   assert.notEqual(action.cardId, 'wild')
 })
 
+test('discard prioritizes non-play deadwood before protected play cards', () => {
+  const state = stateFor({
+    hand: [
+      natural('deadwood-ace', 'A', 'clubs'),
+      natural('play-4s', '4', 'spades'),
+      natural('run-6h', '6', 'hearts'),
+      natural('run-7h', '7', 'hearts'),
+      natural('run-8h', '8', 'hearts'),
+    ],
+    hasOpened: false,
+  })
+  state.players[0].hasOpened = true
+  state.players[0].melds = [{ type: 'group', cards: group('opponent-fours', '4') }]
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', () => 0.99)
+  assert.deepEqual(action, { type: 'discard', cardId: 'deadwood-ace' })
+})
+
+test('discard can force a playable deadwood card about 15% of the time', () => {
+  const state = stateFor({
+    hand: [
+      natural('play-4s', '4', 'spades'),
+      natural('play-9s', '9', 'spades'),
+      natural('run-5h', '5', 'hearts'),
+      natural('run-6h', '6', 'hearts'),
+      natural('run-7h', '7', 'hearts'),
+      natural('run-8h', '8', 'hearts'),
+    ],
+    hasOpened: false,
+  })
+  state.players[0].hasOpened = true
+  state.players[0].melds = [
+    { type: 'group', cards: group('opponent-fours', '4') },
+    { type: 'group', cards: group('opponent-nines', '9') },
+  ]
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', () => 0.0)
+  assert.equal(action.type, 'discard')
+  assert.ok(['play-4s', 'play-9s'].includes(action.cardId))
+})
+
 test('action is invariant when hidden opponent cards change', () => {
   const hand = [natural('ace', 'A'), natural('king', 'K'), natural('three', '3')]
   const firstState = stateFor({ hand, hasOpened: true, opponentHands: [[natural('hidden-a', '4')], [natural('hidden-b', '5')]] })
@@ -260,64 +301,144 @@ test('large unopened-hand search is invariant when hidden opponent cards change'
   )
 })
 
-test('buy policy requires immediate natural-card group or run progress', async (testContext) => {
+test('buy policy respects the round contract when evaluating immediate progress', async (testContext) => {
   const cases = [
     {
-      name: 'group progress',
+      name: 'group round buys for group progress',
       hand: [natural('seven-c', '7', 'clubs'), natural('seven-d', '7', 'diamonds')],
       top: natural('seven-h', '7', 'hearts'),
+      roundNumber: 4,
       expected: true,
     },
     {
-      name: 'ace-low run',
+      name: 'group round ignores run progress',
       hand: [natural('two-h', '2'), natural('three-h', '3')],
       top: natural('ace-h', 'A'),
+      roundNumber: 4,
+      expected: false,
+    },
+    {
+      name: 'run round ignores group progress',
+      hand: [natural('seven-c', '7', 'clubs'), natural('seven-d', '7', 'diamonds')],
+      top: natural('seven-h', '7', 'hearts'),
+      roundNumber: 7,
+      expected: false,
+    },
+    {
+      name: 'run round buys for ace-low run progress',
+      hand: [natural('two-h', '2'), natural('three-h', '3')],
+      top: natural('ace-h', 'A'),
+      roundNumber: 7,
       expected: true,
     },
     {
-      name: 'ace-high run',
+      name: 'run round buys for ace-high run progress',
       hand: [natural('queen-h', 'Q'), natural('king-h', 'K')],
       top: natural('ace-h', 'A'),
+      roundNumber: 7,
       expected: true,
     },
     {
-      name: 'four-card run window',
+      name: 'run round buys for four-card run window',
       hand: [natural('four-h', '4'), natural('six-h', '6'), natural('seven-h', '7')],
       top: natural('five-h', '5'),
+      roundNumber: 7,
       expected: true,
     },
     {
-      name: 'duplicate physical same-suit rank makes no progress',
+      name: 'run round buys for one-gap extension window',
+      hand: [natural('two-h', '2'), natural('three-h', '3'), natural('five-h', '5')],
+      top: natural('six-h', '6'),
+      roundNumber: 7,
+      expected: true,
+    },
+    {
+      name: 'run round buys for ace and four in two-three-five shape',
+      hand: [natural('two-h', '2'), natural('three-h', '3'), natural('five-h', '5')],
+      top: natural('ace-h', 'A'),
+      roundNumber: 7,
+      expected: true,
+    },
+    {
+      name: 'mixed round keeps one-gap extension conservative',
+      hand: [natural('two-h', '2'), natural('three-h', '3'), natural('five-h', '5')],
+      top: natural('six-h', '6'),
+      roundNumber: 5,
+      expected: false,
+    },
+    {
+      name: 'duplicate physical same-suit rank makes no run progress',
       hand: [natural('five-h-copy', '5'), natural('four-h', '4'), natural('six-h', '6')],
       top: natural('five-h-discard', '5'),
+      roundNumber: 7,
       expected: false,
     },
     {
       name: 'joker in hand is excluded from run progress',
       hand: [natural('four-h', '4'), joker('wild')],
       top: natural('five-h', '5'),
+      roundNumber: 7,
       expected: false,
     },
     {
-      name: 'joker discard is excluded from progress',
+      name: 'joker discard is excluded from group progress',
       hand: [natural('seven-c', '7', 'clubs'), natural('seven-d', '7', 'diamonds')],
       top: joker('discard-wild'),
+      roundNumber: 4,
       expected: false,
+    },
+    {
+      name: 'mixed round accepts run progress',
+      hand: [natural('four-h', '4'), natural('six-h', '6'), natural('seven-h', '7')],
+      top: natural('five-h', '5'),
+      roundNumber: 5,
+      expected: true,
+    },
+    {
+      name: 'mixed round accepts group progress',
+      hand: [natural('seven-c', '7', 'clubs'), natural('seven-d', '7', 'diamonds')],
+      top: natural('seven-h', '7', 'hearts'),
+      roundNumber: 5,
+      expected: true,
     },
     {
       name: 'unrelated natural card makes no progress',
       hand: [natural('four-h', '4'), natural('eight-h', '8'), natural('five-c', '5', 'clubs')],
       top: natural('five-h', '5'),
+      roundNumber: 7,
       expected: false,
     },
   ]
 
   for (const fixture of cases) {
     await testContext.test(fixture.name, () => {
-      const state = stateFor({ hand: fixture.hand, top: fixture.top, activePlayerIndex: 2 })
+      const state = stateFor({ hand: fixture.hand, top: fixture.top, activePlayerIndex: 2, roundNumber: fixture.roundNumber })
       assert.equal(shouldBuyDiscard(state, 'cpu-1'), fixture.expected)
     })
   }
+})
+
+test('opened CPU buys only when the discard can be laid off immediately', () => {
+  const layoffState = stateFor({
+    hand: [natural('spare', 'K', 'clubs')],
+    hasOpened: true,
+    top: natural('group-top', '5', 'spades'),
+    activePlayerIndex: 2,
+  })
+  layoffState.players[0].hasOpened = true
+  layoffState.players[0].melds = [{ type: 'group', cards: group('owner-fives', '5') }]
+
+  const deadState = stateFor({
+    hand: [natural('spare', 'K', 'clubs')],
+    hasOpened: true,
+    top: natural('dead-top', '9', 'spades'),
+    activePlayerIndex: 2,
+  })
+  deadState.players[0].hasOpened = true
+  deadState.players[0].melds = [{ type: 'group', cards: group('owner-fives', '5') }]
+
+  assert.equal(shouldBuyDiscard(layoffState, 'cpu-1'), true)
+  assert.equal(shouldBuyDiscard(deadState, 'cpu-1'), false)
 })
 
 test('buy rejects own, frozen, active-player, missing-discard, and unknown-player claims', () => {
@@ -349,10 +470,10 @@ test('buy decision is invariant when hidden opponent hands change', () => {
   assert.equal(shouldBuyDiscard(first, 'cpu-1'), shouldBuyDiscard(second, 'cpu-1'))
 })
 
-test('buy evaluation remains bounded for a hand larger than 25 cards', () => {
+test('run-only buy guard blocks oversized speculative hands', () => {
   const hand = Array.from({ length: 30 }, (_, index) => natural(`bulk-${index}`, String((index % 9) + 2), 'clubs'))
   hand.push(natural('queen-h', 'Q', 'hearts'), natural('king-h', 'K', 'hearts'))
-  const state = stateFor({ hand, top: natural('ace-h', 'A', 'hearts'), activePlayerIndex: 2 })
+  const state = stateFor({ hand, top: natural('ace-h', 'A', 'hearts'), activePlayerIndex: 2, roundNumber: 7 })
 
-  assert.equal(shouldBuyDiscard(state, 'cpu-1'), true)
+  assert.equal(shouldBuyDiscard(state, 'cpu-1'), false)
 })

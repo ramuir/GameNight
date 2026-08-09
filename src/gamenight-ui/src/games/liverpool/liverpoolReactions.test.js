@@ -74,6 +74,7 @@ test('buy rejects late, active, own-discard, and frozen claims without changing 
 
 test('PLAY uses user-first legal arbitration, freezes the caller discard, and resumes interrupted turn', () => {
   const state = reactionState()
+  state.players[0].hasOpened = true
   state.players[0].hand = [natural('user-discard', 'K'), natural('user-kept', '2')]
   state.players[2].hasOpened = true
   state.players[2].hand = [natural('cpu-discard', 'Q'), natural('cpu-kept', '3')]
@@ -91,7 +92,7 @@ test('PLAY uses user-first legal arbitration, freezes the caller discard, and re
   assert.equal(result.playerId, 'player')
   assert.equal(result.state.activePlayerIndex, state.activePlayerIndex)
   assert.equal(result.state.phase, state.phase)
-  assert.equal(result.state.players[0].hasOpened, false)
+  assert.equal(result.state.players[0].hasOpened, true)
   assert.equal(result.state.players[1].melds[0].cards.some((card) => card.id === 'play-card'), true)
   assert.deepEqual(result.state.discardPile.at(-1), {
     card: natural('user-discard', 'K'),
@@ -104,6 +105,7 @@ test('PLAY uses user-first legal arbitration, freezes the caller discard, and re
 test('PLAY permits the user who became active after CPU 2 discarded', () => {
   const state = reactionState()
   state.activePlayerIndex = 0
+  state.players[0].hasOpened = true
   state.players[0].hand = [natural('user-discard', 'K'), natural('user-kept', '2')]
   state.players[1].melds = [validateMeld([
     natural('meld-4c', '4', 'clubs'),
@@ -119,6 +121,27 @@ test('PLAY permits the user who became active after CPU 2 discarded', () => {
   assert.equal(result.resolved, true)
   assert.equal(result.state.activePlayerIndex, 0)
   assert.equal(result.state.phase, 'draw')
+})
+
+test('PLAY rejects callers who have not opened their own melds', () => {
+  const state = reactionState()
+  state.players[0].hasOpened = false
+  state.players[0].hand = [natural('user-discard', 'K'), natural('user-kept', '2')]
+  state.players[1].hasOpened = true
+  state.players[1].melds = [validateMeld([
+    natural('meld-4c', '4', 'clubs'),
+    natural('meld-4d', '4', 'diamonds'),
+    natural('meld-4h', '4', 'hearts'),
+  ], 'group').meld]
+  state.discardPile[0] = { card: natural('play-card', '4', 'spades'), discardedBy: 'cpu-2', frozen: false }
+
+  const result = resolvePlay(state, [
+    { playerId: 'player', ownerId: 'cpu-1', meldIndex: 0, discardCardId: 'user-discard' },
+  ])
+
+  assert.equal(result.resolved, false)
+  assert.equal(result.reason, 'not-opened-ineligible')
+  assert.strictEqual(result.state, state)
 })
 
 test('PLAY skips an illegal priority claim and leaves state unchanged when no claim is legal', () => {

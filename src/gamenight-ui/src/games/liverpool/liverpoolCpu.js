@@ -12,8 +12,10 @@ const RUN_RANK_VALUE = Object.freeze(Object.fromEntries(
 const MAX_MELD_CANDIDATES_PER_TYPE = 12_000
 const MAX_CANDIDATE_GENERATION_STATES = 100_000
 const MAX_CONTRACT_SEARCH_STATES = 50_000
+const MAX_RUN_ONLY_BUY_HAND_SIZE = 16
+const MAX_SPECULATIVE_RUN_BUY_HAND_SIZE = 20
 
-function completesShortRun(hand, discard) {
+function completesShortRun(hand, discard, { allowSingleGap = false } = {}) {
   if (discard.isJoker || !RUN_RANK_VALUE[discard.rank] || !discard.suit) return false
   if (hand.some((card) => !card.isJoker && card.rank === discard.rank && card.suit === discard.suit)) return false
 
@@ -42,8 +44,36 @@ function completesShortRun(hand, discard) {
         if (complete) return true
       }
     }
+
+    if (!allowSingleGap) continue
+
+    const runValues = [...suitValues, discardValue]
+    for (let start = 1; start <= 14; start += 1) {
+      for (let end = start + 2; end <= 14; end += 1) {
+        if (discardValue < start || discardValue > end) continue
+        const windowLength = end - start + 1
+        const naturalCount = runValues.filter((value) => value >= start && value <= end).length
+        const missingCount = windowLength - naturalCount
+        if (naturalCount >= 3 && missingCount <= 1) return true
+      }
+    }
   }
   return false
+}
+
+function completesShortGroup(hand, discard) {
+  if (discard.isJoker) return false
+  let matchingRankCount = 1
+  for (const card of hand) {
+    if (!card.isJoker && card.rank === discard.rank) matchingRankCount += 1
+  }
+  return matchingRankCount >= 3
+}
+
+function helpsExistingMeld(state, discard) {
+  return state.players.some((owner) => (
+    owner.melds.some((meld) => validateMeld([...meld.cards, discard], meld.type).valid)
+  ))
 }
 
 export function shouldBuyDiscard(state, playerId) {
@@ -54,14 +84,23 @@ export function shouldBuyDiscard(state, playerId) {
   if (topDiscard.discardedBy === player.id || !topDiscard.card) return false
 
   const discard = topDiscard.card
-  if (!discard.isJoker) {
-    let matchingRankCount = 1
-    for (const card of player.hand) {
-      if (!card.isJoker && card.rank === discard.rank) matchingRankCount += 1
-    }
-    if (matchingRankCount >= 3) return true
-  }
-  return completesShortRun(player.hand, discard)
+  if (player.hasOpened) return helpsExistingMeld(state, discard)
+
+  const roundContract = ROUND_CONTRACTS[state.roundNumber] ?? []
+  const requiredTypes = new Set(roundContract)
+  const runOnlyContract = roundContract.length > 0 && roundContract.every((type) => type === 'run')
+  const groupProgress = requiredTypes.has('group') && completesShortGroup(player.hand, discard)
+  if (groupProgress) return true
+
+  if (!requiredTypes.has('run')) return false
+  if (runOnlyContract && player.hand.length > MAX_RUN_ONLY_BUY_HAND_SIZE) return false
+
+  const strictRunProgress = completesShortRun(player.hand, discard)
+  if (strictRunProgress) return true
+
+  return runOnlyContract
+    && player.hand.length <= MAX_SPECULATIVE_RUN_BUY_HAND_SIZE
+    && completesShortRun(player.hand, discard, { allowSingleGap: true })
 }
 
 function choose(options, tieBreaker) {
@@ -204,8 +243,8 @@ function meldCandidates(cards, type) {
   ))
 }
 
-function findInitialContract(state, hand) {
-  const contract = ROUND_CONTRACTS[state.roundNumber]
+function findInitialContract(roundNumber, hand, { requireResidualForNonRoundSeven = true } = {}) {
+  const contract = ROUND_CONTRACTS[roundNumber]
   if (!contract) return null
   const candidatesByType = Object.fromEntries(
     [...new Set(contract)].map((type) => [type, meldCandidates(hand, type)]),
@@ -214,7 +253,7 @@ function findInitialContract(state, hand) {
   let searchStates = 0
 
   function canCompleteRoundSeven(nextContractIndex, usedIndices) {
-    if (state.roundNumber !== 7) return true
+    if (roundNumber !== 7) return true
     const remainingMeldCount = contract.length - nextContractIndex
     const uncoveredCount = hand.length - usedIndices.size
     if (uncoveredCount < remainingMeldCount * 4) return false
@@ -236,13 +275,13 @@ function findInitialContract(state, hand) {
     searchStates += 1
     if (searchStates > MAX_CONTRACT_SEARCH_STATES) return null
     if (contractIndex === contract.length) {
-      if (state.roundNumber < 7 && usedIndices.size === hand.length) return null
-      if (state.roundNumber === 7 && usedIndices.size !== hand.length) return null
+      if (roundNumber < 7 && requireResidualForNonRoundSeven && usedIndices.size === hand.length) return null
+      if (roundNumber === 7 && usedIndices.size !== hand.length) return null
       const proposed = selected.map((meld) => ({
         type: meld.type,
         cards: meld.indices.map((index) => hand[index]),
       }))
-      return validateContract(state.roundNumber, proposed).valid
+      return validateContract(roundNumber, proposed).valid
         ? selected.map(({ type, cardIds }) => ({ type, cardIds }))
         : null
     }
@@ -263,6 +302,10 @@ function findInitialContract(state, hand) {
   }
 
   return search(0, new Set())
+}
+
+export function findLiverpoolInitialContract(roundNumber, hand, options) {
+  return findInitialContract(roundNumber, hand, options)
 }
 
 function legalLayoffs(state, player) {
@@ -300,16 +343,88 @@ function cardSupport(hand, card) {
   }, 0)
 }
 
-function chooseDiscard(player, tieBreaker) {
+function canParticipateInGroup(hand, card) {
+  if (card.isJoker) return hand.some((candidate) => !candidate.isJoker)
+  const jokerCount = hand.filter((candidate) => candidate.isJoker).length
+  const sameRankCount = hand.filter((candidate) => !candidate.isJoker && candidate.rank === card.rank).length
+  return sameRankCount + jokerCount >= 3
+}
+
+function canParticipateInRun(hand, card) {
+  if (card.isJoker || !card.suit || !RUN_RANK_VALUE[card.rank]) return false
+  const jokerCount = hand.filter((candidate) => candidate.isJoker).length
+  const suitValues = new Set()
+  for (const candidate of hand) {
+    if (candidate.isJoker || candidate.suit !== card.suit) continue
+    const value = RUN_RANK_VALUE[candidate.rank]
+    if (!value) continue
+    suitValues.add(value)
+    if (candidate.rank === 'A') suitValues.add(14)
+  }
+
+  const cardValues = card.rank === 'A' ? [1, 14] : [RUN_RANK_VALUE[card.rank]]
+  for (const cardValue of cardValues) {
+    for (let start = Math.max(1, cardValue - 3); start <= Math.min(cardValue, 11); start += 1) {
+      const end = start + 3
+      let naturalCount = 0
+      for (let value = start; value <= end; value += 1) {
+        if (suitValues.has(value)) naturalCount += 1
+      }
+      const missingCount = 4 - naturalCount
+      if (naturalCount >= 3 && missingCount <= jokerCount) return true
+    }
+  }
+  return false
+}
+
+function isCardUsefulForOwnHand(hand, card) {
+  return canParticipateInGroup(hand, card) || canParticipateInRun(hand, card)
+}
+
+function enablesPlayForOthers(state, discarderId, card) {
+  return state.players.some((owner) => (
+    owner.melds.some((meld) => (
+      owner.id !== discarderId
+      && validateMeld([...meld.cards, card], meld.type).valid
+    ))
+  ))
+}
+
+function chooseDiscard(state, player, tieBreaker) {
+  const allowPlayDiscard = Number(tieBreaker()) < 0.15
   const naturalCards = player.hand.filter((card) => !card.isJoker)
   const discardCandidates = naturalCards.length > 0 ? naturalCards : player.hand
   const scored = discardCandidates.map((card) => ({
     cardId: card.id,
+    useful: isCardUsefulForOwnHand(player.hand, card),
+    enablesPlay: enablesPlayForOthers(state, player.id, card),
     score: (scoreCard(card) * 10) - cardSupport(player.hand, card),
   }))
-  const bestScore = Math.max(...scored.map((candidate) => candidate.score))
+  const bestPriority = Math.max(...scored.map((candidate) => {
+    if (!candidate.useful && !candidate.enablesPlay) return 4
+    if (!candidate.useful && candidate.enablesPlay) return allowPlayDiscard ? 3 : 1
+    if (candidate.useful && !candidate.enablesPlay) return 2
+    return allowPlayDiscard ? 1 : 0
+  }))
+  const bestScore = Math.max(...scored
+    .filter((candidate) => {
+      if (!candidate.useful && !candidate.enablesPlay) return bestPriority === 4
+      if (!candidate.useful && candidate.enablesPlay) return bestPriority === (allowPlayDiscard ? 3 : 1)
+      if (candidate.useful && !candidate.enablesPlay) return bestPriority === 2
+      return bestPriority === (allowPlayDiscard ? 1 : 0)
+    })
+    .map((candidate) => candidate.score))
   const best = scored
-    .filter((candidate) => candidate.score === bestScore)
+    .filter((candidate) => {
+      const priority = (!candidate.useful && !candidate.enablesPlay)
+        ? 4
+        : (!candidate.useful && candidate.enablesPlay)
+          ? (allowPlayDiscard ? 3 : 1)
+          : (candidate.useful && !candidate.enablesPlay)
+            ? 2
+            : (allowPlayDiscard ? 1 : 0)
+      return priority === bestPriority && candidate.score === bestScore
+    })
     .sort((left, right) => left.cardId.localeCompare(right.cardId))
   return { type: 'discard', cardId: choose(best, tieBreaker).cardId }
 }
@@ -325,8 +440,8 @@ export function chooseLiverpoolCpuAction(state, playerId, tieBreaker = Math.rand
     const topDiscard = state.discardPile.at(-1)
     if (topDiscard && !topDiscard.frozen) {
       const completesContract = !player.hasOpened
-        && !findInitialContract(state, player.hand)
-        && findInitialContract(state, [...player.hand, topDiscard.card])
+        && !findInitialContract(state.roundNumber, player.hand)
+        && findInitialContract(state.roundNumber, [...player.hand, topDiscard.card])
       const enablesLayoff = player.hasOpened && state.players.some((owner) => (
         owner.melds.some((meld) => validateMeld([...meld.cards, topDiscard.card], meld.type).valid)
       ))
@@ -338,7 +453,7 @@ export function chooseLiverpoolCpuAction(state, playerId, tieBreaker = Math.rand
   if (state.phase !== 'action') throw new Error(`Unsupported CPU phase: ${state.phase}`)
 
   if (!player.hasOpened) {
-    const melds = findInitialContract(state, player.hand)
+    const melds = findInitialContract(state.roundNumber, player.hand)
     if (melds) return { type: 'meld-initial-contract', melds }
   }
 
@@ -355,5 +470,5 @@ export function chooseLiverpoolCpuAction(state, playerId, tieBreaker = Math.rand
     }
   }
 
-  return chooseDiscard(player, tieBreaker)
+  return chooseDiscard(state, player, tieBreaker)
 }

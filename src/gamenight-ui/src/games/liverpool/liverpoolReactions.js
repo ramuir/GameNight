@@ -70,6 +70,7 @@ function claimRejection(state, claim, { activePlayerId, topDiscard, kind }) {
   if (topDiscard.frozen) return 'frozen-discard'
   if (kind === 'buy' && topDiscard.discardedBy === null) return 'unowned-discard-ineligible'
   if (kind === 'buy' && topDiscard.discardedBy === claim.playerId) return 'own-discard-ineligible'
+  if (kind === 'play' && !state.players[playerIndex(state, claim.playerId)]?.hasOpened) return 'not-opened-ineligible'
   if (kind === 'play' && typeof claim.discardCardId !== 'string') return 'invalid-claim'
   return null
 }
@@ -144,18 +145,15 @@ function attemptPlay(state, claim, topDiscard) {
   const callerIndex = playerIndex(state, claim.playerId)
   const interruptedPlayerIndex = state.activePlayerIndex
   const interruptedPhase = state.phase
-  const callerHadOpened = state.players[callerIndex].hasOpened
   const context = cloneState(state)
   context.discardPile.pop()
   context.players[callerIndex].hand.push(cloneCard(topDiscard.card))
-  context.players[callerIndex].hasOpened = true
   context.activePlayerIndex = callerIndex
   context.phase = 'action'
 
   let played
   try {
     played = layOff(context, claim.playerId, claim.ownerId, claim.meldIndex, [topDiscard.card.id])
-    played.players[callerIndex].hasOpened = callerHadOpened
     const discarded = discardCard(played, claim.playerId, claim.discardCardId)
     discarded.discardPile.at(-1).frozen = true
     if (discarded.roundStatus === 'active') {

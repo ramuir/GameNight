@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './LiverpoolGame.css'
-import { chooseLiverpoolCpuAction, shouldBuyDiscard } from './liverpoolCpu.js'
+import { chooseLiverpoolCpuAction, findLiverpoolInitialContract, shouldBuyDiscard } from './liverpoolCpu.js'
 import {
   ROUND_CONTRACTS,
   advanceRound,
@@ -33,15 +33,32 @@ function seededRandom(seedText = '0044') {
   }
 }
 
-function queryOptions() {
+function createSessionSeed() {
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    const values = new Uint32Array(2)
+    window.crypto.getRandomValues(values)
+    return `auto-${values[0].toString(36)}-${values[1].toString(36)}`
+  }
+  return `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+function readQueryOptions() {
   const params = new URLSearchParams(window.location.search)
+  const fixture = params.get('fixture')
+  const seedFromQuery = params.get('seed')
   const dealerParam = params.get('dealer')
   const dealer = dealerParam === null ? Number.NaN : Number(dealerParam)
   return {
-    seed: params.get('seed') ?? '0044',
-    fixture: params.get('fixture'),
+    seed: seedFromQuery ?? (fixture ? '0044' : createSessionSeed()),
+    fixture,
     dealerIndex: Number.isInteger(dealer) && dealer >= 0 && dealer <= 2 ? dealer : null,
   }
+}
+
+const INITIAL_QUERY_OPTIONS = readQueryOptions()
+
+function queryOptions() {
+  return INITIAL_QUERY_OPTIONS
 }
 
 function createInitialState(roundNumber = 1, dealerIndex = 2, scores) {
@@ -94,6 +111,14 @@ function createInitialState(roundNumber = 1, dealerIndex = 2, scores) {
       card('fixture-meld-4d', '4', 'diamonds'),
       card('fixture-meld-4h', '4', 'hearts'),
     ] }]
+    state.players[0].hasOpened = true
+    state.players[0].melds = [{ type: 'group', cards: [
+      card('fixture-user-open-9c', '9', 'clubs'),
+      card('fixture-user-open-9d', '9', 'diamonds'),
+      card('fixture-user-open-9h', '9', 'hearts'),
+    ] }]
+    state.players[1].hasOpened = true
+    state.players[2].hasOpened = true
     state.stock = [card('fixture-stock-a', '8', 'clubs'), card('fixture-stock-b', '10', 'diamonds')]
     state.discardPile = [{ card: card('fixture-prior-discard', 'Q', 'hearts'), discardedBy: USER_ID, frozen: true }]
     return state
@@ -244,7 +269,11 @@ function partitionContract(cards, contract, roundNumber) {
 function selectedContract(state, selectedIds) {
   const user = state.players.find((player) => player.id === USER_ID)
   if (!user || user.hasOpened || selectedIds.length === 0) return null
+  if (state.roundNumber === 7 && selectedIds.length !== user.hand.length) return null
   const cards = selectedIds.map((id) => user.hand.find((card) => card.id === id)).filter(Boolean)
+  if (state.roundNumber === 7) {
+    return findLiverpoolInitialContract(state.roundNumber, cards, { requireResidualForNonRoundSeven: false })
+  }
   const contract = ROUND_CONTRACTS[state.roundNumber]
   for (const types of [contract, [...contract].reverse()]) {
     const melds = partitionContract(cards, types, state.roundNumber)
@@ -332,6 +361,87 @@ function MeldFan({ title, cards = [], tone = 'cyan', isSelected = false, onSelec
   )
 }
 
+function SeatBox({ name, score, markers = [], cardCount, className }) {
+  return (
+    <div className={className} aria-label={`${name}, score ${score}${typeof cardCount === 'number' ? `, ${cardCount} cards remaining` : ''}`}>
+      <span className="opponent-name">{name}{markers.length ? ` · ${markers.join(' · ')}` : ''}</span>
+      <span className="opponent-score"><span>Score</span><strong>{score}</strong></span>
+      {typeof cardCount === 'number' ? <span className="opponent-cards" aria-hidden="true"><span className="opponent-card-stack"><i /><i /></span><strong>{cardCount}</strong></span> : null}
+    </div>
+  )
+}
+
+function RoundSummaryPopup({ state, playerNames }) {
+  const winnerName = state.winnerId ? playerNames[state.winnerId] : (state.roundResult?.winnerId ? playerNames[state.roundResult.winnerId] : 'Blocked round')
+  const roundScores = state.roundResult?.scores ?? {}
+  const rows = PLAYER_IDS.map((playerId) => {
+    const player = state.players.find((candidate) => candidate.id === playerId)
+    return {
+      playerId,
+      name: playerNames[playerId],
+      roundScore: roundScores[playerId] ?? 0,
+      cardsLeft: player?.hand.length ?? 0,
+      totalScore: state.scores[playerId] ?? 0,
+    }
+  })
+
+  return (
+    <section className="liverpool-round-summary" role="dialog" aria-label="Hand summary" aria-live="polite">
+      <header className="liverpool-round-summary-header">
+        <strong>{state.roundStatus === 'game-complete' ? 'Game complete' : `Hand ${state.roundNumber} complete`}</strong>
+        <span>{winnerName} won this hand.</span>
+      </header>
+      <table className="liverpool-round-summary-table" aria-label="Round scores and cards remaining">
+        <thead>
+          <tr>
+            <th scope="col">Player</th>
+            <th scope="col">Round</th>
+            <th scope="col">Cards left</th>
+            <th scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.playerId}>
+              <th scope="row">{row.name}</th>
+              <td>{row.roundScore}</td>
+              <td>{row.cardsLeft}</td>
+              <td>{row.totalScore}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
+function sortHandCards(cards, sortMode) {
+  return [...cards].sort((left, right) => {
+    if (sortMode === 'suit') return (left.suit ?? 'zz').localeCompare(right.suit ?? 'zz') || RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank)
+    return RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank) || (left.suit ?? '').localeCompare(right.suit ?? '')
+  })
+}
+
+function normalizeHandOrder(sortedIds, customIds) {
+  const available = new Set(sortedIds)
+  const retained = customIds.filter((id) => available.has(id))
+  const retainedSet = new Set(retained)
+  return [...retained, ...sortedIds.filter((id) => !retainedSet.has(id))]
+}
+
+function reorderHandOrder(currentIds, draggedId, targetId, insertAfter) {
+  if (!draggedId || !targetId || draggedId === targetId) return currentIds
+  const nextIds = currentIds.filter((id) => id !== draggedId)
+  const targetIndex = nextIds.indexOf(targetId)
+  if (targetIndex === -1) return currentIds
+  nextIds.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedId)
+  return nextIds
+}
+
+function haveSameOrder(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
 function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld, canSelectMeld }) {
   const isDealt = state.roundStatus !== 'pending' && state.roundStatus !== 'cutting'
   const markers = [
@@ -341,11 +451,13 @@ function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld
   ].filter(Boolean)
   return (
     <section className={`liverpool-opponent liverpool-opponent-${side}`} aria-label={`${PLAYER_NAMES[player.id]} section`}>
-      <div className={`opponent-seat opponent-seat-${side}`} aria-label={`${PLAYER_NAMES[player.id]}, score ${player.score}${isDealt ? `, ${player.hand.length} cards remaining` : ''}`}>
-        <span className="opponent-name">{PLAYER_NAMES[player.id]}{markers.length ? ` · ${markers.join(' · ')}` : ''}</span>
-        <span className="opponent-score"><span>Score</span><strong>{player.score}</strong></span>
-        {isDealt ? <span className="opponent-cards" aria-hidden="true"><span className="opponent-card-stack"><i /><i /></span><strong>{player.hand.length}</strong></span> : null}
-      </div>
+      <SeatBox
+        name={PLAYER_NAMES[player.id]}
+        score={player.score}
+        markers={markers}
+        cardCount={isDealt ? player.hand.length : undefined}
+        className={`opponent-seat opponent-seat-${side}`}
+      />
       <div className="opponent-melds">
         {Array.from({ length: 3 }, (_, meldIndex) => (
           <MeldFan
@@ -371,6 +483,8 @@ export function LiverpoolGame() {
   const [reaction, setReaction] = useState(null)
   const [notice, setNotice] = useState('Press Deal to begin Hand 1.')
   const [sortMode, setSortMode] = useState('rank')
+  const [handOrder, setHandOrder] = useState([])
+  const [draggedHandCardId, setDraggedHandCardId] = useState(null)
   const [cutPosition, setCutPosition] = useState(0)
   const cutPositionRef = useRef(0)
   const rngRef = useRef(seededRandom(queryOptions().seed))
@@ -390,11 +504,18 @@ export function LiverpoolGame() {
   const canPlay = reaction?.kind === 'play' && reaction.stage === 'window'
   const canCompletePlay = playClaimed && selectedCards.length === 1 && selectedMeld
   const canSelectMeld = !reaction || playClaimed
+  const sortedHand = sortHandCards(user.hand, sortMode)
+  const sortedHandIds = sortedHand.map((card) => card.id)
+  const resolvedHandOrder = normalizeHandOrder(sortedHandIds, handOrder)
+  const handCardsById = new Map(sortedHand.map((card) => [card.id, card]))
+  const hand = resolvedHandOrder.map((cardId) => handCardsById.get(cardId)).filter(Boolean)
 
-  const hand = [...user.hand].sort((left, right) => {
-    if (sortMode === 'suit') return (left.suit ?? 'zz').localeCompare(right.suit ?? 'zz') || RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank)
-    return RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank) || (left.suit ?? '').localeCompare(right.suit ?? '')
-  })
+  useEffect(() => {
+    setHandOrder((current) => {
+      const next = normalizeHandOrder(sortedHandIds, current)
+      return haveSameOrder(current, next) ? current : next
+    })
+  }, [sortedHandIds.join('|')])
 
   function updateState(nextState, nextNotice, { openPlayWindow = false, preserveSelection = false } = {}) {
     setGameState(nextState)
@@ -551,6 +672,53 @@ export function LiverpoolGame() {
     updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard. You drew from stock.` : 'You drew from stock.', { preserveSelection: true })
   }
 
+  function handleSortToggle() {
+    const nextSortMode = sortMode === 'rank' ? 'suit' : 'rank'
+    setSortMode(nextSortMode)
+    setHandOrder(sortHandCards(user.hand, nextSortMode).map((card) => card.id))
+    setDraggedHandCardId(null)
+  }
+
+  function handleHandCardDragStart(event, cardId) {
+    if (hand.length < 2 || Boolean(reaction && !playClaimed)) {
+      event.preventDefault()
+      return
+    }
+    setDraggedHandCardId(cardId)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', cardId)
+  }
+
+  function handleHandCardDragOver(event) {
+    if (!draggedHandCardId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }
+
+  function handleHandCardDrop(event, targetId) {
+    if (!draggedHandCardId) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const insertAfter = event.clientX > rect.left + (rect.width / 2)
+    setHandOrder((current) => reorderHandOrder(normalizeHandOrder(sortedHandIds, current), draggedHandCardId, targetId, insertAfter))
+    setDraggedHandCardId(null)
+  }
+
+  function handleHandCardDragEnd() {
+    setDraggedHandCardId(null)
+  }
+
+  function handleHandFanDrop(event) {
+    if (!draggedHandCardId || event.target !== event.currentTarget) return
+    event.preventDefault()
+    setHandOrder((current) => {
+      const next = normalizeHandOrder(sortedHandIds, current).filter((id) => id !== draggedHandCardId)
+      next.push(draggedHandCardId)
+      return next
+    })
+    setDraggedHandCardId(null)
+  }
+
   function handleMeld() {
     const contract = selectedContract(gameState, selectedCards)
     if (!contract) {
@@ -634,6 +802,13 @@ export function LiverpoolGame() {
     : null
   const perfectCutCount = getDealCount(gameState.roundNumber) * gameState.players.length
   const cutInstructions = `Perfect cut targets are ${perfectCutCount} or ${perfectCutCount + 1} cards. Press Stop to cut at the current position.`
+  const isPlayerDealt = gameState.roundStatus !== 'pending' && gameState.roundStatus !== 'cutting'
+  const playerMarkers = [
+    gameState.dealerIndex === 0 ? 'Dealer' : null,
+    gameState.startPlayerIndex === 0 ? 'Starts' : null,
+    gameState.roundStatus === 'active' && isUserTurn ? 'Turn' : null,
+  ].filter(Boolean)
+  const showSummaryPopup = ['complete', 'game-complete'].includes(gameState.roundStatus) && Boolean(gameState.roundResult)
 
   return (
     <section className="liverpool-table" aria-label="Liverpool board" data-round-status={gameState.roundStatus}>
@@ -655,6 +830,7 @@ export function LiverpoolGame() {
       </header>
 
       <div className="liverpool-table-surface">
+        {showSummaryPopup ? <RoundSummaryPopup state={gameState} playerNames={PLAYER_NAMES} /> : null}
         <Opponent player={players[1]} side="left" state={gameState} playerIndex={1} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} />
         <section className="liverpool-center" aria-label="Center table actions">
           <div className={`turn-orb${reaction ? ` turn-orb-${reaction.kind}` : ''}`} role="timer" aria-live="polite">{timerLabel}</div>
@@ -670,7 +846,13 @@ export function LiverpoolGame() {
         <Opponent player={players[2]} side="right" state={gameState} playerIndex={2} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} />
 
         <section className="liverpool-player" aria-label="Player area" data-testid="player-area">
-          <span className="player-seat-status">You · {gameState.scores[USER_ID]}{gameState.dealerIndex === 0 ? ' · Dealer' : ''}{gameState.startPlayerIndex === 0 ? ' · Starts' : ''}</span>
+          <SeatBox
+            name="You"
+            score={gameState.scores[USER_ID]}
+            markers={playerMarkers}
+            cardCount={isPlayerDealt ? hand.length : undefined}
+            className="opponent-seat player-seat-box"
+          />
           <div className="player-melds" aria-label="Your melds">
             {user.melds.map((meld, meldIndex) => {
               const key = `${USER_ID}:${meldIndex}`
@@ -697,22 +879,23 @@ export function LiverpoolGame() {
             </div>
           ) : null}
           <div className="player-hand-arc">
-            <div className="player-hand-fan" aria-label={`Your hand, ${hand.length} cards`} data-sort-mode={sortMode}>
+            <div className="player-hand-fan" aria-label={`Your hand, ${hand.length} cards`} data-sort-mode={sortMode} onDragOver={handleHandCardDragOver} onDrop={handleHandFanDrop}>
               {hand.map((card, index) => {
                 const cardOffset = index - (hand.length - 1) / 2
                 const spread = hand.length > 1 ? Math.min(30, 300 / (hand.length - 1)) : 0
                 const rotation = hand.length > 1 ? Math.min(5, 48 / (hand.length - 1)) : 0
                 const selected = selectedCards.includes(card.id)
+                const isDragged = draggedHandCardId === card.id
                 return (
                   <button
                     key={card.id}
                     type="button"
-                    className={`player-hand-card${selected ? ' player-hand-card-selected' : ''}`}
+                    className={`player-hand-card${selected ? ' player-hand-card-selected' : ''}${isDragged ? ' player-hand-card-dragging' : ''}`}
                     style={{
                       '--card-x': `${cardOffset * spread}px`,
                       '--card-y': `${Math.abs(cardOffset) * 3.5}px`,
                       '--card-rotate': `${cardOffset * rotation}deg`,
-                      zIndex: index + 1,
+                      zIndex: isDragged ? hand.length + 20 : index + 1,
                     }}
                     data-card-id={card.id}
                     data-rank={card.rank}
@@ -722,7 +905,12 @@ export function LiverpoolGame() {
                     aria-pressed={selected}
                     aria-posinset={index + 1}
                     aria-setsize={hand.length}
+                    draggable={hand.length > 1 && !(reaction && !playClaimed)}
                     disabled={Boolean(reaction && !playClaimed)}
+                    onDragStart={(event) => handleHandCardDragStart(event, card.id)}
+                    onDragOver={handleHandCardDragOver}
+                    onDrop={(event) => handleHandCardDrop(event, card.id)}
+                    onDragEnd={handleHandCardDragEnd}
                     onClick={() => setSelectedCards((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id])}
                   ><img src={getCardImage(card)} alt="" /></button>
                 )
@@ -748,7 +936,7 @@ export function LiverpoolGame() {
         {reaction?.kind === 'buy'
           ? <button type="button" className="table-action" onClick={skipBuyWindow}>Skip buy</button>
           : <button type="button" className={`table-action table-action-primary${reaction?.kind === 'play' ? ' table-action-play' : ''}`} onClick={playClaimed ? handlePlayCompletion : handlePlayClaim} disabled={playClaimed ? !canCompletePlay : !canPlay}>{playClaimed ? 'Complete PLAY' : `PLAY ${reaction?.kind === 'play' ? reaction.seconds : ''}`}</button>}
-        <button type="button" className="table-action" onClick={() => setSortMode((current) => current === 'rank' ? 'suit' : 'rank')}>Sort {sortMode === 'rank' ? 'suit' : 'rank'}</button>
+        <button type="button" className="table-action" onClick={handleSortToggle}>Sort {sortMode === 'rank' ? 'suit' : 'rank'}</button>
         <button type="button" className="table-action" onClick={() => {
           setPlayMode('fullGame')
           setSelectedHand('1')
