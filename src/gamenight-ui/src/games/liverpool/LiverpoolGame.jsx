@@ -9,7 +9,6 @@ import {
   dealPendingRound,
   discardCard,
   drawFromStock,
-  getDealCount,
   layOff,
   meldInitialContract,
   preparePendingDeal,
@@ -17,13 +16,14 @@ import {
   validateContract,
   validateMeld,
 } from './liverpoolLogic.js'
-import { resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
+import { chooseCpuCutCount, getPerfectCutTargets, resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', { eager: true, import: 'default' })
 const USER_ID = 'player'
 const PLAYER_IDS = [USER_ID, 'cpu-1', 'cpu-2']
 const PLAYER_NAMES = { player: 'You', 'cpu-1': 'CPU 1', 'cpu-2': 'CPU 2' }
 const RANK_ORDER = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'JOKER']
+const BUY_HIGHLIGHT_MS = 2000
 
 function seededRandom(seedText = '0044') {
   let seed = [...seedText].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 2166136261)
@@ -61,8 +61,12 @@ function queryOptions() {
   return INITIAL_QUERY_OPTIONS
 }
 
-function createInitialState(roundNumber = 1, dealerIndex = 2, scores) {
+function createInitialState(roundNumber = 1, dealerIndex = 1, scores) {
   const { seed, fixture, dealerIndex: queryDealerIndex } = queryOptions()
+  if (import.meta.env.DEV && fixture === 'cut-preview' && roundNumber === 1 && !scores) {
+    const pending = createPendingRoundState({ roundNumber: 5, playerIds: PLAYER_IDS, dealerIndex: 1 })
+    return preparePendingDeal(pending, seededRandom('0046-cut-preview'))
+  }
   if (import.meta.env.DEV && fixture === 'round-complete' && roundNumber === 1 && !scores) {
     const state = createPendingRoundState({
       roundNumber: 1,
@@ -102,9 +106,9 @@ function createInitialState(roundNumber = 1, dealerIndex = 2, scores) {
     state.players[2].hand = [card('fixture-cpu2-a', '6', 'hearts'), card('fixture-cpu2-b', '7', 'spades')]
     state.players[discarderIndex].hand = [
       card(`fixture-${fixture}-play`, '4', 'spades'),
-      card(`fixture-${fixture}-keep-a`, '2', 'clubs'),
-      card(`fixture-${fixture}-keep-b`, '3', 'diamonds'),
+      { id: `fixture-${fixture}-joker`, rank: 'JOKER', suit: null, isJoker: true },
     ]
+    state.players[discarderIndex].hasOpened = false
     state.players[meldOwnerIndex].hasOpened = true
     state.players[meldOwnerIndex].melds = [{ type: 'group', cards: [
       card('fixture-meld-4c', '4', 'clubs'),
@@ -117,8 +121,6 @@ function createInitialState(roundNumber = 1, dealerIndex = 2, scores) {
       card('fixture-user-open-9d', '9', 'diamonds'),
       card('fixture-user-open-9h', '9', 'hearts'),
     ] }]
-    state.players[1].hasOpened = true
-    state.players[2].hasOpened = true
     state.stock = [card('fixture-stock-a', '8', 'clubs'), card('fixture-stock-b', '10', 'diamonds')]
     state.discardPile = [{ card: card('fixture-prior-discard', 'Q', 'hearts'), discardedBy: USER_ID, frozen: true }]
     return state
@@ -362,11 +364,15 @@ function MeldFan({ title, cards = [], tone = 'cyan', isSelected = false, onSelec
 }
 
 function SeatBox({ name, score, markers = [], cardCount, className }) {
+  const hasCardCount = typeof cardCount === 'number'
   return (
-    <div className={className} aria-label={`${name}, score ${score}${typeof cardCount === 'number' ? `, ${cardCount} cards remaining` : ''}`}>
+    <div className={className} aria-label={`${name}, score ${score}${hasCardCount ? `, ${cardCount} cards remaining` : ''}`}>
       <span className="opponent-name">{name}{markers.length ? ` · ${markers.join(' · ')}` : ''}</span>
       <span className="opponent-score"><span>Score</span><strong>{score}</strong></span>
-      {typeof cardCount === 'number' ? <span className="opponent-cards" aria-hidden="true"><span className="opponent-card-stack"><i /><i /></span><strong>{cardCount}</strong></span> : null}
+      <span className={`opponent-cards${hasCardCount ? '' : ' opponent-cards-placeholder'}`} aria-hidden="true">
+        <span className="opponent-card-stack"><i /><i /></span>
+        <strong>{hasCardCount ? cardCount : '00'}</strong>
+      </span>
     </div>
   )
 }
@@ -442,12 +448,14 @@ function haveSameOrder(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
-function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld, canSelectMeld }) {
+function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld, canSelectMeld, cutFeedback, buyHighlightPlayerId }) {
   const isDealt = state.roundStatus !== 'pending' && state.roundStatus !== 'cutting'
+  const isTurn = state.roundStatus === 'active' && state.activePlayerIndex === playerIndex
+  const isBuyHighlighted = buyHighlightPlayerId === player.id
   const markers = [
     state.dealerIndex === playerIndex ? 'Dealer' : null,
     state.startPlayerIndex === playerIndex ? 'Starts' : null,
-    state.roundStatus === 'active' && state.activePlayerIndex === playerIndex ? 'Turn' : null,
+    isTurn ? 'Turn' : null,
   ].filter(Boolean)
   return (
     <section className={`liverpool-opponent liverpool-opponent-${side}`} aria-label={`${PLAYER_NAMES[player.id]} section`}>
@@ -456,7 +464,7 @@ function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld
         score={player.score}
         markers={markers}
         cardCount={isDealt ? player.hand.length : undefined}
-        className={`opponent-seat opponent-seat-${side}`}
+        className={`opponent-seat opponent-seat-${side}${isBuyHighlighted ? ' seat-buy-highlight' : ''}${isTurn ? ' seat-turn' : ''}${cutFeedback ? ` seat-cut-feedback seat-cut-feedback-${cutFeedback.tone}` : ''}`}
       />
       <div className="opponent-melds">
         {Array.from({ length: 3 }, (_, meldIndex) => (
@@ -486,22 +494,28 @@ export function LiverpoolGame() {
   const [handOrder, setHandOrder] = useState([])
   const [draggedHandCardId, setDraggedHandCardId] = useState(null)
   const [cutPosition, setCutPosition] = useState(0)
+  const [cutOutcome, setCutOutcome] = useState(null)
+  const [cutReveal, setCutReveal] = useState(null)
+  const [animatedUserScore, setAnimatedUserScore] = useState(null)
+  const [buyHighlightPlayerId, setBuyHighlightPlayerId] = useState(null)
   const cutPositionRef = useRef(0)
+  const cutRevealTimerRef = useRef(null)
+  const buyHighlightTimerRef = useRef(null)
   const rngRef = useRef(seededRandom(queryOptions().seed))
 
   const players = gameState.players.map((player) => ({ ...player, score: gameState.scores[player.id] ?? 0 }))
   const user = players[0]
+  const visibleUserScore = animatedUserScore ?? (gameState.scores[USER_ID] ?? 0)
   const activePlayer = players[gameState.activePlayerIndex]
   const isUserTurn = activePlayer?.id === USER_ID
   const topDiscard = gameState.discardPile.at(-1)
   const minimumContractCards = ROUND_CONTRACTS[gameState.roundNumber]?.reduce((total, type) => total + (type === 'group' ? 3 : 4), 0) ?? Infinity
   const canDraw = gameState.roundStatus === 'active' && isUserTurn && gameState.phase === 'draw' && !reaction
   const canAct = gameState.roundStatus === 'active' && isUserTurn && gameState.phase === 'action' && !reaction
-  const canLayOff = canAct && user.hasOpened && selectedCards.length > 0 && selectedMeld
   const canDiscard = canAct && selectedCards.length === 1
   const canBuy = reaction?.kind === 'buy' && activePlayer?.id !== USER_ID && !topDiscard?.frozen && topDiscard?.discardedBy !== USER_ID
   const playClaimed = reaction?.kind === 'play' && reaction.stage === 'claimed'
-  const canPlay = reaction?.kind === 'play' && reaction.stage === 'window'
+  const canPlay = reaction?.kind === 'play' && reaction.stage === 'window' && topDiscard?.discardedBy !== USER_ID
   const canCompletePlay = playClaimed && selectedCards.length === 1 && selectedMeld
   const canSelectMeld = !reaction || playClaimed
   const sortedHand = sortHandCards(user.hand, sortMode)
@@ -509,6 +523,23 @@ export function LiverpoolGame() {
   const resolvedHandOrder = normalizeHandOrder(sortedHandIds, handOrder)
   const handCardsById = new Map(sortedHand.map((card) => [card.id, card]))
   const hand = resolvedHandOrder.map((cardId) => handCardsById.get(cardId)).filter(Boolean)
+  const isCutPreviewFixture = import.meta.env.DEV && queryOptions().fixture === 'cut-preview'
+  const cutFeedbackByPlayer = cutOutcome?.playerId ? { [cutOutcome.playerId]: cutOutcome } : {}
+
+  function markBuyHighlight(playerId, durationMs = 3000) {
+    if (!playerId) return
+    setBuyHighlightPlayerId(playerId)
+    if (buyHighlightTimerRef.current) window.clearTimeout(buyHighlightTimerRef.current)
+    buyHighlightTimerRef.current = window.setTimeout(() => {
+      setBuyHighlightPlayerId(null)
+      buyHighlightTimerRef.current = null
+    }, durationMs)
+  }
+
+  useEffect(() => (() => {
+    if (buyHighlightTimerRef.current) window.clearTimeout(buyHighlightTimerRef.current)
+    if (cutRevealTimerRef.current) window.clearTimeout(cutRevealTimerRef.current)
+  }), [])
 
   useEffect(() => {
     setHandOrder((current) => {
@@ -518,6 +549,9 @@ export function LiverpoolGame() {
   }, [sortedHandIds.join('|')])
 
   function updateState(nextState, nextNotice, { openPlayWindow = false, preserveSelection = false } = {}) {
+    if (nextState.roundStatus === 'pending' || nextState.roundStatus === 'cutting') {
+      setHandOrder([])
+    }
     setGameState(nextState)
     if (!preserveSelection) {
       setSelectedCards([])
@@ -544,7 +578,14 @@ export function LiverpoolGame() {
   }
 
   function cpuPlayClaims(state) {
-    return possiblePlayClaims(state, false)
+    const claims = []
+    for (const player of state.players) {
+      if (player.id === USER_ID || player.id === state.players[state.activePlayerIndex].id) continue
+      for (const target of possiblePlayTargets(state)) {
+        claims.push({ playerId: player.id, ...target })
+      }
+    }
+    return claims
   }
 
   function skipBuyWindow() {
@@ -555,6 +596,7 @@ export function LiverpoolGame() {
     if (pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === pendingDrawPlayerId) {
       next = drawFromStock(next, pendingDrawPlayerId, rngRef.current)
     }
+    if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
     setReaction(null)
     updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard.` : 'Buy skipped.')
   }
@@ -577,6 +619,7 @@ export function LiverpoolGame() {
         if (reaction.pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === reaction.pendingDrawPlayerId) {
           next = drawFromStock(next, reaction.pendingDrawPlayerId, rngRef.current)
         }
+        if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
         setReaction(null)
         setGameState(next)
         setSelectedCards([])
@@ -607,6 +650,7 @@ export function LiverpoolGame() {
             setNotice('CPU 1 discarded. Buy now or skip before CPU 2 draws.')
           } else {
             const { result, next } = resolveCpuBuysThenDraw(gameState, activePlayer.id, rngRef.current)
+            if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
             updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard. ${PLAYER_NAMES[activePlayer.id]} drew from stock.` : `${PLAYER_NAMES[activePlayer.id]} drew from stock.`)
           }
           return
@@ -624,7 +668,7 @@ export function LiverpoolGame() {
   }, [activePlayer?.id, gameState, isUserTurn, reaction, topDiscard?.discardedBy, topDiscard?.frozen])
 
   useEffect(() => {
-    if (gameState.roundStatus !== 'cutting') return undefined
+    if (gameState.roundStatus !== 'cutting' || cutReveal) return undefined
     let animationFrame
     const startedAt = performance.now()
     const animate = (timestamp) => {
@@ -636,10 +680,19 @@ export function LiverpoolGame() {
     }
     animationFrame = window.requestAnimationFrame(animate)
     return () => window.cancelAnimationFrame(animationFrame)
-  }, [gameState.roundStatus])
+  }, [cutReveal, gameState.roundStatus])
+
+  useEffect(() => {
+    if (!cutOutcome) return undefined
+    const timer = window.setTimeout(() => setCutOutcome(null), 2600)
+    return () => window.clearTimeout(timer)
+  }, [cutOutcome])
 
   function deal() {
     if (gameState.roundStatus !== 'pending') return
+    setCutOutcome(null)
+    setCutReveal(null)
+    setAnimatedUserScore(null)
     let pending = gameState
     if (playMode === 'singleHand' && gameState.roundNumber !== Number(selectedHand)) {
       const roundNumber = Number(selectedHand)
@@ -652,15 +705,69 @@ export function LiverpoolGame() {
       updateState(preparePendingDeal(pending, rngRef.current), 'Stop the marker to cut the shuffled deck.')
       return
     }
-    updateState(dealPendingRound(pending, rngRef.current), `Hand ${pending.roundNumber} dealt.`)
+
+    const dealt = dealPendingRound(pending, rngRef.current)
+    const cutter = pending.players[pending.cutterIndex]
+    if (cutter && cutter.id !== USER_ID) {
+      const cpuCutCount = chooseCpuCutCount(pending.roundNumber, rngRef.current, pending.players.length)
+      const cutResult = resolvePerfectCut(dealt, cpuCutCount)
+      setCutOutcome(cutResult.resolved
+        ? {
+            tone: 'hit',
+            text: `${PLAYER_NAMES[cutter.id]} nailed the cut for ${cutResult.bonus} points!`,
+            playerId: cutter.id,
+            bonus: cutResult.bonus,
+          }
+        : {
+            tone: 'miss',
+            text: `${PLAYER_NAMES[cutter.id]} missed the cut target.`,
+            playerId: cutter.id,
+            bonus: 0,
+          })
+      updateState(cutResult.state, cutResult.resolved ? `${PLAYER_NAMES[cutter.id]} hit the cut target. Hand ${pending.roundNumber} dealt.` : `Hand ${pending.roundNumber} dealt.`)
+      return
+    }
+
+    updateState(dealt, `Hand ${pending.roundNumber} dealt.`)
   }
 
   function stopCut() {
-    if (gameState.roundStatus !== 'cutting') return
+    if (gameState.roundStatus !== 'cutting' || cutReveal) return
+    const frozenPosition = cutPositionRef.current
+    setCutPosition(frozenPosition)
     const cutCount = Math.round((cutPositionRef.current / 100) * 107)
     const dealt = dealPendingRound(gameState, rngRef.current, cutCount)
     const cutResult = resolvePerfectCut(dealt, cutCount)
-    updateState(cutResult.state, cutResult.resolved ? `Perfect cut: ${cutResult.bonus} points.` : `Cut at ${cutCount}. Hand ${gameState.roundNumber} dealt.`)
+    const cutter = gameState.players[gameState.cutterIndex]
+    const reveal = cutResult.resolved
+      ? { tone: 'hit', text: `Perfect cut! ${cutResult.bonus} points.`, playerId: cutter?.id ?? USER_ID, bonus: cutResult.bonus, cutCount, markerPosition: frozenPosition }
+      : { tone: 'miss', text: `Missed the target at ${cutCount}.`, playerId: cutter?.id ?? USER_ID, bonus: 0, cutCount, markerPosition: frozenPosition }
+    setCutOutcome(reveal)
+    setCutReveal(reveal)
+    setNotice(reveal.text)
+    if (cutRevealTimerRef.current) window.clearTimeout(cutRevealTimerRef.current)
+    cutRevealTimerRef.current = window.setTimeout(() => {
+      setCutReveal(null)
+      setAnimatedUserScore(null)
+      window.requestAnimationFrame(() => {
+        updateState(cutResult.state, cutResult.resolved ? `Perfect cut: ${cutResult.bonus} points.` : `Cut at ${cutCount}. Hand ${gameState.roundNumber} dealt.`)
+      })
+      cutRevealTimerRef.current = null
+    }, 900)
+  }
+
+  function resetCutPreview() {
+    if (!isCutPreviewFixture) return
+    setReaction(null)
+    setCutOutcome(null)
+    if (cutRevealTimerRef.current) {
+      window.clearTimeout(cutRevealTimerRef.current)
+      cutRevealTimerRef.current = null
+    }
+    setCutReveal(null)
+    setAnimatedUserScore(null)
+    const pending = createPendingRoundState({ roundNumber: 5, playerIds: PLAYER_IDS, dealerIndex: 1 })
+    updateState(preparePendingDeal(pending, seededRandom('0046-cut-preview')), 'Stop the marker to preview cut feedback.')
   }
 
   function handleDrawStock() {
@@ -669,6 +776,7 @@ export function LiverpoolGame() {
       return
     }
     const { result, next } = resolveCpuBuysThenDraw(gameState, USER_ID, rngRef.current)
+    if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
     updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard. You drew from stock.` : 'You drew from stock.', { preserveSelection: true })
   }
 
@@ -736,12 +844,18 @@ export function LiverpoolGame() {
     if (pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === pendingDrawPlayerId) {
       next = drawFromStock(next, pendingDrawPlayerId, rngRef.current)
     }
+    markBuyHighlight(result.playerId)
     setReaction(null)
     updateState(next, `You bought the discard and drew one card. ${PLAYER_NAMES[pendingDrawPlayerId]} drew from stock.`, { preserveSelection: true })
   }
 
   function handlePlayClaim() {
-    if (!canPlay) return
+    if (!canPlay) {
+      if (reaction?.kind === 'play' && topDiscard?.discardedBy === USER_ID) {
+        setNotice('You cannot claim PLAY on your own discard.')
+      }
+      return
+    }
     setSelectedCards([])
     setSelectedMeld(null)
     setReaction({ kind: 'play', stage: 'claimed', seconds: reaction.seconds })
@@ -779,7 +893,7 @@ export function LiverpoolGame() {
         return updateState(createPendingRoundState({ roundNumber, playerIds: PLAYER_IDS, dealerIndex: (roundNumber + 1) % 3 }), `Hand ${roundNumber} ready to deal.`)
       }
       if (gameState.roundStatus === 'game-complete') {
-        const next = createPendingRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2 })
+        const next = createPendingRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 1 })
         setReaction(null)
         return updateState(next, 'Press Deal to begin Hand 1.')
       }
@@ -800,8 +914,10 @@ export function LiverpoolGame() {
   const resultText = gameState.roundResult
     ? `${PLAYER_NAMES[gameState.roundResult.winnerId] ?? 'Blocked round'} · ${Object.entries(gameState.roundResult.scores).map(([id, score]) => `${PLAYER_NAMES[id]} ${score}`).join(' · ')}`
     : null
-  const perfectCutCount = getDealCount(gameState.roundNumber) * gameState.players.length
-  const cutInstructions = `Perfect cut targets are ${perfectCutCount} or ${perfectCutCount + 1} cards. Press Stop to cut at the current position.`
+  const perfectCutTargets = getPerfectCutTargets(gameState.roundNumber, gameState.players.length)
+  const cutInstructions = `Perfect cut targets are ${perfectCutTargets.primary} or ${perfectCutTargets.secondary} cards. Press Stop to cut at the current position.`
+  const cutTargetCenterPercent = (((perfectCutTargets.primary + perfectCutTargets.secondary) / 2) / 107) * 100
+  const cutTargetWidthPercent = ((perfectCutTargets.secondary - perfectCutTargets.primary + 1) / 107) * 100
   const isPlayerDealt = gameState.roundStatus !== 'pending' && gameState.roundStatus !== 'cutting'
   const playerMarkers = [
     gameState.dealerIndex === 0 ? 'Dealer' : null,
@@ -831,7 +947,7 @@ export function LiverpoolGame() {
 
       <div className="liverpool-table-surface">
         {showSummaryPopup ? <RoundSummaryPopup state={gameState} playerNames={PLAYER_NAMES} /> : null}
-        <Opponent player={players[1]} side="left" state={gameState} playerIndex={1} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} />
+        <Opponent player={players[1]} side="left" state={gameState} playerIndex={1} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} cutFeedback={cutFeedbackByPlayer[players[1].id]} buyHighlightPlayerId={buyHighlightPlayerId} />
         <section className="liverpool-center" aria-label="Center table actions">
           <div className={`turn-orb${reaction ? ` turn-orb-${reaction.kind}` : ''}`} role="timer" aria-live="polite">{timerLabel}</div>
           <div className="table-piles" data-testid="center-piles">
@@ -842,16 +958,22 @@ export function LiverpoolGame() {
             <button type="button" className="table-pile table-pile-draw" aria-label={`Draw pile, ${gameState.stock.length} cards`} onClick={handleDrawStock} disabled={!canDraw}><span className="deck-back" aria-hidden="true" /></button>
           </div>
           <p className="liverpool-notice" role="status">{resultText ?? notice}</p>
+          {cutOutcome ? (
+            <p className={`cut-outcome cut-outcome-${cutOutcome.tone}`} role="status" aria-live="polite">
+              <span className={`cut-outcome-icon cut-outcome-icon-${cutOutcome.tone}`} aria-hidden="true" />
+              <span className="visually-hidden">{cutOutcome.text}</span>
+            </p>
+          ) : null}
         </section>
-        <Opponent player={players[2]} side="right" state={gameState} playerIndex={2} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} />
+        <Opponent player={players[2]} side="right" state={gameState} playerIndex={2} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} cutFeedback={cutFeedbackByPlayer[players[2].id]} buyHighlightPlayerId={buyHighlightPlayerId} />
 
         <section className="liverpool-player" aria-label="Player area" data-testid="player-area">
           <SeatBox
             name="You"
-            score={gameState.scores[USER_ID]}
+            score={visibleUserScore}
             markers={playerMarkers}
             cardCount={isPlayerDealt ? hand.length : undefined}
-            className="opponent-seat player-seat-box"
+            className={`opponent-seat player-seat-box${buyHighlightPlayerId === USER_ID ? ' seat-buy-highlight' : ''}${isUserTurn ? ' seat-turn' : ''}${cutFeedbackByPlayer[USER_ID] ? ` seat-cut-feedback seat-cut-feedback-${cutFeedbackByPlayer[USER_ID].tone}` : ''}`}
           />
           <div className="player-melds" aria-label="Your melds">
             {user.melds.map((meld, meldIndex) => {
@@ -872,11 +994,17 @@ export function LiverpoolGame() {
             <div className="cut-control" data-testid="cut-control">
               <p id="cut-instructions" className="visually-hidden">{cutInstructions}</p>
               <div className="cut-meter" role="meter" aria-label="Deck cut position" aria-describedby="cut-instructions" aria-valuemin="0" aria-valuemax="107" aria-valuenow={Math.round((cutPosition / 100) * 107)}>
-                <span className="cut-target" style={{ left: `${((getDealCount(gameState.roundNumber) * 3 + 0.5) / 107) * 100}%` }} />
-                <span className="cut-marker" style={{ left: `${cutPosition}%` }} />
+                <span className="cut-target" style={{ left: `${cutTargetCenterPercent}%`, width: `${cutTargetWidthPercent}%` }}>
+                  <span className="cut-target-card cut-target-card-left" aria-hidden="true" />
+                  <span className="cut-target-card cut-target-card-right" aria-hidden="true" />
+                </span>
+                <span className={`cut-marker${cutReveal ? ` cut-marker-${cutReveal.tone}` : ''}`} style={{ left: `${cutReveal?.markerPosition ?? cutPosition}%` }} />
               </div>
-              <button type="button" className="cut-stop" aria-describedby="cut-instructions" onClick={stopCut}>Stop</button>
+              <button type="button" className="cut-stop" aria-describedby="cut-instructions" onClick={stopCut} disabled={gameState.roundStatus !== 'cutting' || Boolean(cutReveal)}>Stop</button>
             </div>
+          ) : null}
+          {cutReveal?.bonus < 0 && cutReveal.playerId === USER_ID ? (
+            <div className="cut-bonus-flight" aria-hidden="true">-50</div>
           ) : null}
           <div className="player-hand-arc">
             <div className="player-hand-fan" aria-label={`Your hand, ${hand.length} cards`} data-sort-mode={sortMode} onDragOver={handleHandCardDragOver} onDrop={handleHandFanDrop}>
@@ -921,28 +1049,36 @@ export function LiverpoolGame() {
       </div>
 
       <footer className="liverpool-table-actions" aria-label="Core table actions" data-testid="action-bar">
-        {['complete', 'game-complete'].includes(gameState.roundStatus) ? <button type="button" className="table-action table-action-primary" onClick={nextRound}>{gameState.roundStatus === 'game-complete' ? 'Restart game' : playMode === 'fullGame' ? 'Next hand' : 'Replay hand'}</button> : null}
-        <button type="button" className="table-action" onClick={deal} disabled={gameState.roundStatus !== 'pending'}>Deal</button>
-        <button type="button" className="table-action" onClick={handleMeld} disabled={!canAct || user.hasOpened || selectedCards.length < minimumContractCards}>Meld</button>
-        <button type="button" className="table-action" onClick={() => selectedMeld && attempt(() => layOff(gameState, USER_ID, selectedMeld.ownerId, selectedMeld.meldIndex, selectedCards), 'Cards laid off.')} disabled={!canLayOff}>Lay off</button>
-        <button type="button" className="table-action table-action-primary" onClick={() => {
-          try {
-            updateState(discardCard(gameState, USER_ID, selectedCards[0]), 'Card discarded.', { openPlayWindow: true })
-          } catch (error) {
-            setNotice(error instanceof Error ? error.message : String(error))
-          }
-        }} disabled={!canDiscard}>Discard</button>
-        <button type="button" className="table-action table-action-primary" onClick={handleBuy} disabled={!canBuy}>Buy {reaction?.kind === 'buy' ? reaction.seconds : ''}</button>
-        {reaction?.kind === 'buy'
-          ? <button type="button" className="table-action" onClick={skipBuyWindow}>Skip buy</button>
-          : <button type="button" className={`table-action table-action-primary${reaction?.kind === 'play' ? ' table-action-play' : ''}`} onClick={playClaimed ? handlePlayCompletion : handlePlayClaim} disabled={playClaimed ? !canCompletePlay : !canPlay}>{playClaimed ? 'Complete PLAY' : `PLAY ${reaction?.kind === 'play' ? reaction.seconds : ''}`}</button>}
-        <button type="button" className="table-action" onClick={handleSortToggle}>Sort {sortMode === 'rank' ? 'suit' : 'rank'}</button>
-        <button type="button" className="table-action" onClick={() => {
-          setPlayMode('fullGame')
-          setSelectedHand('1')
-          setReaction(null)
-          updateState(createPendingRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2 }), 'Press Deal to begin Hand 1.')
-        }}>Restart</button>
+        <div className="table-action-group table-action-group-left">
+          {['complete', 'game-complete'].includes(gameState.roundStatus) ? <button type="button" className="table-action table-action-primary" onClick={nextRound}>{gameState.roundStatus === 'game-complete' ? 'Restart game' : playMode === 'fullGame' ? 'Next hand' : 'Replay hand'}</button> : null}
+          <button type="button" className="table-action" onClick={deal} disabled={gameState.roundStatus !== 'pending'}>Deal</button>
+          <button type="button" className="table-action" onClick={handleMeld} disabled={!canAct || user.hasOpened || selectedCards.length < minimumContractCards}>Meld</button>
+        </div>
+
+        <div className="table-action-group table-action-group-center">
+          <button type="button" className="table-action table-action-primary" onClick={() => {
+            try {
+              updateState(discardCard(gameState, USER_ID, selectedCards[0]), 'Card discarded.', { openPlayWindow: true })
+            } catch (error) {
+              setNotice(error instanceof Error ? error.message : String(error))
+            }
+          }} disabled={!canDiscard}>Discard</button>
+          <button type="button" className="table-action table-action-primary" onClick={handleBuy} disabled={!canBuy}>Buy {reaction?.kind === 'buy' ? reaction.seconds : ''}</button>
+          {reaction?.kind === 'buy'
+            ? <button type="button" className="table-action" onClick={skipBuyWindow}>Skip buy</button>
+            : <button type="button" className={`table-action table-action-primary${reaction?.kind === 'play' ? ' table-action-play' : ''}`} onClick={playClaimed ? handlePlayCompletion : handlePlayClaim} disabled={playClaimed ? !canCompletePlay : !canPlay}>{playClaimed ? 'Complete PLAY' : `PLAY ${reaction?.kind === 'play' ? reaction.seconds : ''}`}</button>}
+        </div>
+
+        <div className="table-action-group table-action-group-right">
+          <button type="button" className="table-action" onClick={handleSortToggle}>Sort {sortMode === 'rank' ? 'suit' : 'rank'}</button>
+          {isCutPreviewFixture ? <button type="button" className="table-action" onClick={resetCutPreview}>Reset cut preview</button> : null}
+          <button type="button" className="table-action" onClick={() => {
+            setPlayMode('fullGame')
+            setSelectedHand('1')
+            setReaction(null)
+            updateState(createPendingRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 1 }), 'Press Deal to begin Hand 1.')
+          }}>Restart</button>
+        </div>
       </footer>
     </section>
   )

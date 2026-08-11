@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { chooseLiverpoolCpuAction, shouldBuyDiscard } from './liverpoolCpu.js'
 import {
+  createRoundState,
   discardCard,
   drawFromStock,
   layOff,
@@ -95,6 +96,18 @@ test('plays a complete initial contract and then legal layoffs before discarding
   const laidOff = applyAction(opened, 'cpu-1', layoffAction)
   assert.equal(validateMeld(laidOff.players[1].melds[0].cards, 'group').valid, true)
   assert.deepEqual(chooseLiverpoolCpuAction(laidOff, 'cpu-1', fixedFirst), { type: 'discard', cardId: 'discard' })
+})
+
+test('cpu does not discard the same card it just took from discard', () => {
+  const state = stateFor({
+    phase: 'action',
+    hasOpened: true,
+    hand: [natural('taken-card', 'K', 'clubs'), natural('safe-discard', '4', 'hearts')],
+  })
+  state.justTakenDiscard = { playerId: 'cpu-1', cardId: 'taken-card' }
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
+  assert.deepEqual(action, { type: 'discard', cardId: 'safe-discard' })
 })
 
 test('round 7 CPU opens only when exactly three runs consume its full hand', () => {
@@ -243,6 +256,81 @@ test('discard prioritizes non-play deadwood before protected play cards', () => 
 
   const action = chooseLiverpoolCpuAction(state, 'cpu-1', () => 0.99)
   assert.deepEqual(action, { type: 'discard', cardId: 'deadwood-ace' })
+})
+
+test('round-seven unopened discard keeps run-critical cards over irrelevant group-only shapes', () => {
+  const state = stateFor({
+    roundNumber: 7,
+    hasOpened: false,
+    hand: [
+      natural('two-c', '2', 'clubs'),
+      natural('two-d', '2', 'diamonds'),
+      natural('two-s', '2', 'spades'),
+      natural('jack-h', 'J', 'hearts'),
+      natural('queen-h', 'Q', 'hearts'),
+      natural('king-h', 'K', 'hearts'),
+      natural('ace-h', 'A', 'hearts'),
+    ],
+  })
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
+  assert.equal(action.type, 'discard')
+  assert.ok(['two-c', 'two-d', 'two-s'].includes(action.cardId))
+})
+
+test('round-seven seeded late-hand simulations include cpu wins in mixed-seat play', () => {
+  const seeds = Array.from({ length: 24 }, (_, index) => `round7-mixed-seat-${index + 1}`)
+
+  function seededRandom(seedText = '0047') {
+    let seed = [...seedText].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 2166136261)
+    return () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 4294967296
+    }
+  }
+
+  function chooseUserAction(state, playerId, rng) {
+    if (state.phase === 'draw') return { type: 'draw-stock' }
+    const action = chooseLiverpoolCpuAction(state, playerId, rng)
+    if (action.type === 'meld-initial-contract') return action
+    const player = state.players[state.activePlayerIndex]
+    const naturals = player.hand.filter((card) => !card.isJoker)
+    const pool = (naturals.length > 0 ? naturals : player.hand)
+      .slice()
+      .sort((left, right) => right.id.localeCompare(left.id))
+    return { type: 'discard', cardId: pool[0].id }
+  }
+
+  function simulate(seedText, maxActions = 420) {
+    const rng = seededRandom(seedText)
+    let state = createRoundState({
+        roundNumber: 7,
+        rng,
+      })
+
+    let actions = 0
+    while (state.roundStatus === 'active' && actions < maxActions) {
+      const playerId = state.players[state.activePlayerIndex].id
+      const action = playerId === 'player'
+        ? chooseUserAction(state, playerId, rng)
+        : chooseLiverpoolCpuAction(state, playerId, rng)
+      state = action.type === 'draw-stock'
+        ? drawFromStock(state, playerId, rng)
+        : applyAction(state, playerId, action)
+      actions += 1
+      if (Math.max(...state.players.map((player) => player.hand.length)) > 26) break
+    }
+
+    return state.roundResult?.winnerId ?? null
+  }
+
+  const wins = seeds.reduce((counts, seed) => {
+    const winner = simulate(seed)
+    if (winner) counts[winner] = (counts[winner] ?? 0) + 1
+    return counts
+  }, { player: 0, 'cpu-1': 0, 'cpu-2': 0 })
+
+  assert.ok(wins['cpu-1'] + wins['cpu-2'] > 0, `Expected at least one CPU win. Wins: ${JSON.stringify(wins)}`)
 })
 
 test('discard can force a playable deadwood card about 15% of the time', () => {

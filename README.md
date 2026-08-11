@@ -1,71 +1,34 @@
 # GameNight
 
-GameNight is a test project for building several common household games in one app.
-The first game scaffold is Kings in the Corner.
+Multi-game UI workspace built with React and Vite.
 
-GameNight is a lightweight UI app and is intended to be easy to host on Vercel or Netlify.
+## Run
 
-## Software Used
-
-- React + Vite (game UI)
-- Node.js + npm
-
-## Quick Start
-
-From the repository root:
+From `src/gamenight-ui`:
 
 ```bash
-cd src/gamenight-ui
 npm install
 npm run dev -- --host 127.0.0.1
 ```
 
-Open the UI at:
-- http://127.0.0.1:5173/
+Open `http://127.0.0.1:5173/`.
 
-## Common Commands
+## Test
 
-Install dependencies:
-
-```bash
-cd src/gamenight-ui && npm install
-```
-
-Start UI:
+From `src/gamenight-ui`:
 
 ```bash
-cd src/gamenight-ui
-npm run dev -- --host 127.0.0.1
+npm test
+npm run test:e2e:liverpool
 ```
 
-Stop UI when finished:
-
-- Press Ctrl+C in the terminal running the UI.
-- If needed, close the terminal tab.
-
-Security checks:
+Run a focused Liverpool cut preview check:
 
 ```bash
-cd src/gamenight-ui
-npm run security:check
+npm run test:e2e:liverpool -- --grep "cut-preview|round five cut|cut control"
 ```
 
-Dependency audit only:
+## Notes
 
-```bash
-cd src/gamenight-ui
-npm run audit:check
-```
-
-## Rulebook
-
-- Kings In The Corner implementation rules: `rulebook/kings-in-the-corner-rulebook.md`
-- Legacy prompt notes are kept in `KingsInTheCorner.md` as non-authoritative draft context.
-
-## Secure Change Standards
-
-- Do not commit secrets, tokens, passwords, connection strings, or personal data.
-- Keep local-only environment and override files untracked; use ignored `.env.*` or `*.local` files for local configuration.
-- Run `npm run security:check` before merging dependency or configuration changes.
-- Keep security and dependency remediation isolated from unrelated gameplay or UI changes when possible.
-- Prefer local or offline assets over introducing remote dependencies for security-sensitive surfaces.
+- Liverpool includes a dev cut-preview fixture in the live app via `?game=liverpool&fixture=cut-preview`.
+- Rulebooks live in `rulebook/`.

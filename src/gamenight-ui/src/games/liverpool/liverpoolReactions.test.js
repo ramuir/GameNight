@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import { createRoundState, validateMeld } from './liverpoolLogic.js'
 import {
+  chooseCpuCutCount,
+  getPerfectCutTargets,
   isPerfectCut,
   resolveBuy,
   resolvePerfectCut,
@@ -144,6 +146,79 @@ test('PLAY rejects callers who have not opened their own melds', () => {
   assert.strictEqual(result.state, state)
 })
 
+test('PLAY rejects claims on a caller own discard', () => {
+  const state = reactionState()
+  state.players[1].hasOpened = true
+  state.players[1].hand = [natural('cpu-discard', 'Q'), natural('cpu-keep', '3')]
+  state.players[0].hasOpened = true
+  state.players[0].hand = [natural('user-discard', 'K'), natural('user-kept', '2')]
+  state.players[2].melds = [validateMeld([
+    natural('meld-4c', '4', 'clubs'),
+    natural('meld-4d', '4', 'diamonds'),
+    natural('meld-4h', '4', 'hearts'),
+  ], 'group').meld]
+  state.discardPile[0] = { card: natural('play-card', '4', 'spades'), discardedBy: 'cpu-1', frozen: false }
+
+  const result = resolvePlay(state, [
+    { playerId: 'cpu-1', ownerId: 'cpu-2', meldIndex: 0 },
+  ])
+
+  assert.equal(result.resolved, false)
+  assert.equal(result.reason, 'own-discard-ineligible')
+  assert.strictEqual(result.state, state)
+
+  const userOwnDiscardState = reactionState()
+  userOwnDiscardState.players[0].hasOpened = true
+  userOwnDiscardState.players[0].hand = [natural('user-discard', 'K'), natural('user-keep', '2')]
+  userOwnDiscardState.players[1].melds = [validateMeld([
+    natural('meld-4c-user', '4', 'clubs'),
+    natural('meld-4d-user', '4', 'diamonds'),
+    natural('meld-4h-user', '4', 'hearts'),
+  ], 'group').meld]
+  userOwnDiscardState.discardPile[0] = { card: natural('play-card-user', '4', 'spades'), discardedBy: 'player', frozen: false }
+
+  const userResult = resolvePlay(userOwnDiscardState, [
+    { playerId: 'player', ownerId: 'cpu-1', meldIndex: 0, discardCardId: 'user-discard' },
+  ])
+
+  assert.equal(userResult.resolved, false)
+  assert.equal(userResult.reason, 'own-discard-ineligible')
+  assert.strictEqual(userResult.state, userOwnDiscardState)
+})
+
+test('PLAY auto-selects freeze discard by avoiding useful meld cards when alternatives exist', () => {
+  const state = reactionState()
+  state.activePlayerIndex = 2
+  state.phase = 'draw'
+  state.players[0].hasOpened = false
+  state.players[1].hasOpened = true
+  state.players[1].hand = [
+    natural('cpu-5c', '5', 'clubs'),
+    natural('cpu-5d', '5', 'diamonds'),
+    natural('cpu-kc', 'K', 'clubs'),
+  ]
+  state.players[2].hasOpened = true
+  state.players[2].melds = [validateMeld([
+    natural('meld-4c', '4', 'clubs'),
+    natural('meld-4d', '4', 'diamonds'),
+    natural('meld-4h', '4', 'hearts'),
+  ], 'group').meld]
+  state.discardPile[0] = { card: natural('play-card', '4', 'spades'), discardedBy: 'cpu-2', frozen: false }
+
+  const result = resolvePlay(state, [
+    { playerId: 'cpu-1', ownerId: 'cpu-2', meldIndex: 0 },
+  ], { userPlayerId: '__none__' })
+
+  assert.equal(result.resolved, true)
+  assert.equal(result.playerId, 'cpu-1')
+  assert.equal(result.actions.at(-1).cardId, 'cpu-kc')
+  assert.deepEqual(result.state.discardPile.at(-1), {
+    card: natural('cpu-kc', 'K', 'clubs'),
+    discardedBy: 'cpu-1',
+    frozen: true,
+  })
+})
+
 test('PLAY skips an illegal priority claim and leaves state unchanged when no claim is legal', () => {
   const state = reactionState()
   state.players[0].hasOpened = true
@@ -175,4 +250,28 @@ test('PLAY skips an illegal priority claim and leaves state unchanged when no cl
   ])
   assert.equal(late.reason, 'late-claim')
   assert.strictEqual(late.state, state)
+})
+
+test('perfect cut targets map to hand deal count totals', () => {
+  assert.deepEqual(getPerfectCutTargets(1, 3), { primary: 30, secondary: 31 })
+  assert.deepEqual(getPerfectCutTargets(5, 3), { primary: 36, secondary: 37 })
+})
+
+test('cpu cut count hits perfect target only when success roll passes', () => {
+  const successRng = (() => {
+    const values = [0.05, 0.6]
+    let index = 0
+    return () => values[index++] ?? 0
+  })()
+  const hit = chooseCpuCutCount(5, successRng)
+  assert.ok(hit === 36 || hit === 37)
+
+  const missRng = (() => {
+    const values = [0.9, 36 / 108]
+    let index = 0
+    return () => values[index++] ?? 0
+  })()
+  const miss = chooseCpuCutCount(5, missRng)
+  assert.notEqual(miss, 36)
+  assert.notEqual(miss, 37)
 })

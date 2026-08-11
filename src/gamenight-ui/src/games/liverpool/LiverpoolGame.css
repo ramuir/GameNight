@@ -177,37 +177,40 @@
 .liverpool-opponent-right { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .opponent-seat {
-  --seat-accent: var(--amber-300);
-  width: min(124px, 100%);
-  height: 52px;
+  --seat-accent: #39e0cf;
+  position: relative;
+  width: min(164px, 100%);
+  height: 56px;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 16px minmax(0, 1fr);
+  grid-template-rows: 18px minmax(0, 1fr);
   align-items: center;
   gap: 0 10px;
-  padding: 5px 10px 5px 13px;
+  padding: 6px 10px 6px 13px;
   border: 1px solid color-mix(in srgb, var(--seat-accent) 62%, transparent);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--seat-accent) 18%, #071322), rgba(5, 14, 25, 0.96));
-  box-shadow: 0 0 18px rgba(255, 177, 65, 0.12);
-  place-self: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--seat-accent) 20%, #071a2a), rgba(5, 14, 25, 0.96));
+  box-shadow: 0 0 18px rgba(57, 224, 207, 0.16);
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
 .opponent-seat-left {
   grid-column: 1;
   grid-row: 1;
+  place-self: center;
 }
 
 .opponent-seat-right {
   grid-column: 2;
   grid-row: 1;
+  place-self: center;
 }
 
 .opponent-name {
   grid-column: 1 / -1;
   color: var(--seat-accent);
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.08em;
@@ -232,7 +235,7 @@
 .opponent-score strong {
   font-family: var(--font-display);
   color: var(--paper-100);
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   letter-spacing: 0;
@@ -245,11 +248,36 @@
   color: var(--paper-100);
 }
 
+.opponent-cards-placeholder {
+  visibility: hidden;
+}
+
 .opponent-cards strong {
   min-width: 2ch;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.seat-buy-highlight {
+  --seat-accent: #b16dff;
+  box-shadow:
+    0 0 24px rgba(177, 109, 255, 0.34),
+    inset 0 0 0 1px rgba(177, 109, 255, 0.24);
+  animation: seat-buy-pulse 700ms ease-in-out 3;
+}
+
+.seat-turn {
+  --seat-accent: #ff6675;
+  box-shadow:
+    0 0 24px rgba(255, 102, 117, 0.36),
+    inset 0 0 0 1px rgba(255, 102, 117, 0.24);
+}
+
+@keyframes seat-buy-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }
 
 .opponent-card-stack {
@@ -394,9 +422,10 @@ button.meld-fan:hover .meld-fan-cards,
   grid-area: center;
   padding: 8px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto minmax(2.9em, auto);
   place-items: center;
   gap: 6px;
+  overflow: hidden;
 }
 
 .turn-orb {
@@ -420,12 +449,14 @@ button.meld-fan:hover .meld-fan-cards,
 
 .liverpool-notice {
   width: 100%;
-  min-height: 2.4em;
+  min-height: 2.9em;
   margin: 0;
+  padding: 0 2px 2px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--paper-300);
   font-size: 0.52rem;
-  line-height: 1.2;
+  line-height: 1.28;
   text-align: center;
 }
 
@@ -437,8 +468,8 @@ button.meld-fan:hover .meld-fan-cards,
 }
 
 .table-pile {
-  width: 54px;
-  height: 76px;
+  width: 58px;
+  height: 80px;
   padding: 0;
   position: relative;
   display: grid;
@@ -468,8 +499,8 @@ button.meld-fan:hover .meld-fan-cards,
 .table-pile-draw { border: 1px solid rgba(48, 229, 255, 0.42); background: linear-gradient(145deg, #0b2940, #071522); }
 
 .deck-back {
-  width: 38px;
-  height: 54px;
+  width: 41px;
+  height: 58px;
   border: 2px double rgba(48, 229, 255, 0.58);
   background:
     repeating-linear-gradient(45deg, transparent 0 5px, rgba(48, 229, 255, 0.16) 5px 7px),
@@ -479,43 +510,49 @@ button.meld-fan:hover .meld-fan-cards,
 
 .liverpool-player {
   grid-area: player;
+  position: relative;
   display: block;
   padding: 144px 12px 4px;
+  overflow: visible;
   background: radial-gradient(ellipse at 50% 115%, rgba(48, 229, 255, 0.11), transparent 48%), linear-gradient(180deg, rgba(5, 19, 31, 0.88), rgba(4, 13, 23, 0.92));
 }
 
 .player-seat-box {
-  --seat-accent: var(--cyan-400);
   position: absolute;
   top: 7px;
   left: 10px;
   z-index: 4;
-  width: min(164px, calc(100% - 20px));
-  place-self: start;
-  box-shadow: 0 0 18px rgba(48, 229, 255, 0.12);
+  width: min(164px, 100%);
+  place-self: auto;
+  transform: none;
+}
+
+.player-hand-arc {
+  transform: none;
 }
 
 .player-melds {
   position: absolute;
-  inset: 24px 5% auto;
-  height: 104px;
+  inset: 20px 5% auto;
+  height: 108px;
   z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   gap: 18px;
+  overflow: visible;
 }
 
 .player-melds .meld-fan {
   width: min(23%, 170px);
-  height: 96px;
+  height: 100px;
   flex: 0 1 170px;
 }
 
 .player-melds .meld-fan-cards {
   width: 100%;
   max-width: none;
-  height: 92px;
+  height: 100px;
 }
 
 .player-melds .meld-fan { --meld-card-width: 60px; }
@@ -524,7 +561,7 @@ button.meld-fan:hover .meld-fan-cards,
 
 .player-hand-arc {
   width: min(70%, 610px);
-  height: 104px;
+  height: 108px;
   margin: 0 auto;
   position: relative;
 }
@@ -554,7 +591,7 @@ button.meld-fan:hover .meld-fan-cards,
 .player-hand-fan {
   position: absolute;
   left: 50%;
-  bottom: 34px;
+  bottom: 30px;
   z-index: 3;
   width: 1px;
   height: 1px;
@@ -564,8 +601,8 @@ button.meld-fan:hover .meld-fan-cards,
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 64px;
-  height: 90px;
+  width: 76px;
+  height: 105px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
@@ -588,11 +625,14 @@ button.meld-fan:hover .meld-fan-cards,
   pointer-events: none;
 }
 
-.player-hand-card img { object-fit: cover; }
+.player-hand-card img {
+  object-fit: cover;
+  object-position: center top;
+}
 .player-hand-card::after { content: ''; }
 .player-hand-card:hover img { filter: brightness(1.12); }
 .player-hand-card:active { cursor: grabbing; }
-.player-hand-card-selected { translate: 0 -18px; }
+.player-hand-card-selected { translate: 0 -14px; }
 .player-hand-card-selected::after { outline: 2px solid var(--cyan-400); outline-offset: 2px; }
 .player-hand-card-dragging {
   cursor: grabbing;
@@ -618,10 +658,13 @@ button.meld-fan:hover .meld-fan-cards,
 
 .cut-meter {
   position: relative;
-  height: 28px;
+  height: 34px;
   border-radius: 999px;
-  border: 1px solid rgba(48, 229, 255, 0.38);
-  background: linear-gradient(90deg, rgba(255, 79, 149, 0.24), rgba(48, 229, 255, 0.23), rgba(255, 79, 149, 0.24));
+  border: 1px solid rgba(48, 229, 255, 0.42);
+  background:
+    repeating-linear-gradient(90deg, rgba(253, 244, 222, 0.08) 0 16px, rgba(17, 33, 54, 0.32) 16px 20px),
+    linear-gradient(90deg, rgba(12, 28, 45, 0.96), rgba(27, 61, 92, 0.9), rgba(12, 28, 45, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 18px rgba(48, 229, 255, 0.2);
 }
 
 .cut-target,
@@ -632,8 +675,187 @@ button.meld-fan:hover .meld-fan-cards,
   transform: translate(-50%, -50%);
 }
 
-.cut-target { left: 50%; width: 10%; height: 42px; background: var(--amber-300); box-shadow: 0 0 9px rgba(229, 188, 116, 0.55); }
-.cut-marker { width: 18px; height: 36px; background: var(--cyan-400); box-shadow: 0 0 10px rgba(48, 229, 255, 0.65); }
+.cut-target {
+  left: 50%;
+  min-width: 20px;
+  height: 48px;
+  background: linear-gradient(180deg, rgba(255, 224, 153, 0.92), rgba(241, 168, 69, 0.9));
+  box-shadow: 0 0 12px rgba(255, 183, 71, 0.64), 0 0 26px rgba(255, 145, 68, 0.34);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cut-target-card {
+  width: 8px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #fef8eb, #f5d7a5);
+  box-shadow: 0 0 0 1px rgba(97, 50, 8, 0.25);
+}
+
+.cut-target-card-left { transform: rotate(-8deg); }
+.cut-target-card-right { transform: rotate(8deg); }
+
+.cut-marker {
+  width: 16px;
+  height: 38px;
+  background: linear-gradient(180deg, #5df7ff, #0f9db7);
+  box-shadow: 0 0 12px rgba(48, 229, 255, 0.72);
+}
+
+.cut-marker-hit {
+  background: linear-gradient(180deg, #9fff7a, #2bbd4d);
+  box-shadow: 0 0 14px rgba(95, 246, 86, 0.9);
+}
+
+.cut-marker-miss {
+  background: linear-gradient(180deg, #ff9ea1, #d63c4b);
+  box-shadow: 0 0 14px rgba(255, 108, 119, 0.86);
+}
+
+.cut-marker::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid rgba(192, 252, 255, 0.75);
+}
+
+.cut-outcome {
+  margin: 2px 0 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cut-outcome-hit {
+  animation: none;
+}
+
+.cut-outcome-miss {
+  animation: none;
+}
+
+.cut-outcome-icon {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 0 14px rgba(0, 0, 0, 0.35);
+}
+
+.cut-outcome-icon-hit {
+  background: radial-gradient(circle at 35% 35%, #fff2bd, #f7b23d 72%);
+}
+
+.cut-outcome-icon-hit::before {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 12px;
+  border-right: 3px solid #54390f;
+  border-bottom: 3px solid #54390f;
+  left: 9px;
+  top: 4px;
+  transform: rotate(36deg);
+}
+
+.cut-outcome-icon-miss {
+  background: radial-gradient(circle at 35% 35%, #dbf3ff, #5eb5df 72%);
+}
+
+.cut-outcome-icon-miss::before,
+.cut-outcome-icon-miss::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 2px;
+  background: #133e57;
+  left: 6px;
+  top: 12px;
+}
+
+.cut-outcome-icon-miss::before { transform: rotate(45deg); }
+.cut-outcome-icon-miss::after { transform: rotate(-45deg); }
+
+.cut-bonus-flight {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 45;
+  transform: translate(-50%, -50%);
+  color: #ffe9b9;
+  font-size: clamp(1.2rem, 1.7vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 16px rgba(255, 184, 72, 0.75);
+  pointer-events: none;
+  animation: cut-bonus-fly 0.9s ease-in forwards;
+}
+
+.seat-cut-feedback::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.seat-cut-feedback-hit::after {
+  border: 2px solid rgba(255, 193, 87, 0.95);
+  box-shadow: 0 0 16px rgba(255, 174, 65, 0.48);
+  animation: none;
+}
+
+.seat-cut-feedback-miss::after {
+  border: 2px solid rgba(115, 196, 237, 0.8);
+  box-shadow: 0 0 13px rgba(88, 176, 222, 0.35);
+  animation: none;
+}
+
+@keyframes cut-hit-pulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes cut-miss-pulse {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  50% { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes cut-seat-hit {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+
+@keyframes cut-seat-miss {
+  0% { transform: translateX(0); }
+  33% { transform: translateX(-2px); }
+  66% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes cut-bonus-fly {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -52%) scale(0.78);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-52%, -165%) scale(0.72);
+  }
+}
 
 .cut-stop,
 .table-action {
@@ -650,7 +872,8 @@ button.meld-fan:hover .meld-fan-cards,
 
 .liverpool-table-actions {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: stretch;
   gap: 7px;
   padding: 4px;
   border: 1px solid rgba(48, 229, 255, 0.18);
@@ -658,7 +881,33 @@ button.meld-fan:hover .meld-fan-cards,
   background: rgba(6, 17, 30, 0.88);
 }
 
-.table-action { min-height: 30px; padding: 3px 7px; border-radius: 7px; font-size: 0.56rem; }
+.table-action-group {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+  width: 100%;
+}
+
+.table-action-group-left,
+.table-action-group-right {
+  min-width: 0;
+}
+
+.table-action-group-left {
+  justify-content: flex-start;
+}
+
+.table-action-group-center {
+  width: 100%;
+  justify-content: center;
+}
+
+.table-action-group-right {
+  justify-content: flex-end;
+}
+
+.table-action { flex: 0 0 auto; min-width: 116px; min-height: 30px; padding: 4px 14px; border-radius: 7px; font-size: 0.56rem; white-space: nowrap; }
 .table-action:disabled { cursor: not-allowed; opacity: 0.38; }
 
 .table-action-primary {
@@ -688,7 +937,7 @@ button.meld-fan:hover .meld-fan-cards,
 @media (max-height: 760px) and (min-width: 821px) {
   .liverpool-table { grid-template-rows: 34px minmax(0, 1fr) auto; gap: 5px; padding: 6px; }
   .liverpool-table-surface { grid-template-rows: minmax(130px, 0.76fr) minmax(210px, 1.24fr); gap: 5px; }
-  .player-hand-card { width: 58px; height: 82px; }
+  .player-hand-card { width: 69px; height: 95px; }
   .cut-control { bottom: 124px; }
 }
 
@@ -709,7 +958,8 @@ button.meld-fan:hover .meld-fan-cards,
   }
   .liverpool-center { grid-template-columns: auto 1fr auto; grid-template-rows: 1fr; }
   .liverpool-notice { min-height: 0; }
-  .liverpool-table-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .liverpool-table-actions { grid-template-columns: 1fr; }
+  .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
   .liverpool-round-summary {
     width: min(520px, calc(100% - 16px));
     padding: 8px 10px;
@@ -727,9 +977,10 @@ button.meld-fan:hover .meld-fan-cards,
   }
   .liverpool-opponent { min-height: 150px; }
   .player-melds { width: 90%; gap: 2px; overflow-x: auto; justify-content: flex-start; }
-  .player-hand-card { width: 54px; height: 77px; }
+  .player-hand-card { width: 66px; height: 91px; }
   .cut-control { width: 94%; grid-template-columns: minmax(0, 1fr) minmax(84px, auto); bottom: 132px; }
-  .liverpool-table-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .liverpool-table-actions { grid-template-columns: 1fr; }
+  .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
   .table-action { min-height: 44px; }
   .liverpool-round-summary {
     width: calc(100% - 12px);

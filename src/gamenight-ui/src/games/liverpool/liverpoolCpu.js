@@ -377,7 +377,12 @@ function canParticipateInRun(hand, card) {
   return false
 }
 
-function isCardUsefulForOwnHand(hand, card) {
+function isCardUsefulForOwnHand(hand, card, roundContract = null) {
+  if (!Array.isArray(roundContract) || roundContract.length === 0) {
+    return canParticipateInGroup(hand, card) || canParticipateInRun(hand, card)
+  }
+  const runOnlyContract = roundContract.every((type) => type === 'run')
+  if (runOnlyContract) return canParticipateInRun(hand, card)
   return canParticipateInGroup(hand, card) || canParticipateInRun(hand, card)
 }
 
@@ -392,11 +397,17 @@ function enablesPlayForOthers(state, discarderId, card) {
 
 function chooseDiscard(state, player, tieBreaker) {
   const allowPlayDiscard = Number(tieBreaker()) < 0.15
+  const roundContract = ROUND_CONTRACTS[state.roundNumber] ?? null
+  const blockedDiscardCardId = state.justTakenDiscard?.playerId === player.id
+    ? state.justTakenDiscard.cardId
+    : null
   const naturalCards = player.hand.filter((card) => !card.isJoker)
-  const discardCandidates = naturalCards.length > 0 ? naturalCards : player.hand
-  const scored = discardCandidates.map((card) => ({
+  const candidatePool = naturalCards.length > 0 ? naturalCards : player.hand
+  const discardCandidates = candidatePool.filter((card) => card.id !== blockedDiscardCardId)
+  const scoredCards = discardCandidates.length > 0 ? discardCandidates : candidatePool
+  const scored = scoredCards.map((card) => ({
     cardId: card.id,
-    useful: isCardUsefulForOwnHand(player.hand, card),
+    useful: isCardUsefulForOwnHand(player.hand, card, roundContract),
     enablesPlay: enablesPlayForOthers(state, player.id, card),
     score: (scoreCard(card) * 10) - cardSupport(player.hand, card),
   }))

@@ -241,6 +241,8 @@ test('turn transitions cover draws, discard takes, recycling, blocked rounds, op
   assert.equal(taken.phase, 'action')
   assert.equal(taken.discardPile.length, 0)
   assert.equal(taken.players[taken.activePlayerIndex].hand.length, 11)
+  assert.deepEqual(taken.justTakenDiscard, { playerId, cardId: taken.players[taken.activePlayerIndex].hand.at(-1).id })
+  assert.throws(() => discardCard(taken, playerId, taken.justTakenDiscard.cardId), /same card taken from discard/)
 
   const recyclable = createRoundState({ rng: fixedRng })
   recyclable.stock = []

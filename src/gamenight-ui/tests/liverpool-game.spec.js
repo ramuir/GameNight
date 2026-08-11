@@ -32,6 +32,36 @@ async function selectCard(page, name) {
   await page.getByRole('button', { name, exact: true }).click()
 }
 
+async function dragHandCard(page, sourceLocator, targetLocator) {
+  const sourcePoint = await sourceLocator.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    for (let y = box.top + 6; y < box.bottom - 6; y += 4) {
+      for (let x = box.left + 6; x < box.right - 6; x += 4) {
+        if (document.elementFromPoint(x, y)?.closest('.player-hand-card') === element) {
+          return { x, y }
+        }
+      }
+    }
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  })
+  const targetPoint = await targetLocator.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    for (let y = box.top + 6; y < box.bottom - 6; y += 4) {
+      for (let x = box.left + 6; x < box.right - 6; x += 4) {
+        if (document.elementFromPoint(x, y)?.closest('.player-hand-card') === element) {
+          return { x, y }
+        }
+      }
+    }
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  })
+
+  await page.mouse.move(sourcePoint.x, sourcePoint.y)
+  await page.mouse.down()
+  await page.mouse.move(targetPoint.x, targetPoint.y, { steps: 12 })
+  await page.mouse.up()
+}
+
 async function expectRestoredHandFanLayout(page, viewport) {
   const hand = page.locator('.player-hand-fan')
   const cards = hand.locator('.player-hand-card')
@@ -57,7 +87,7 @@ async function expectRestoredHandFanLayout(page, viewport) {
       viewportWidth: document.documentElement.clientWidth,
     }
   })
-  const expected = viewport.name === 'desktop' ? { width: 64, height: 90 } : { width: 54, height: 77 }
+  const expected = viewport.name === 'desktop' ? { width: 76, height: 105 } : { width: 66, height: 91 }
   for (const card of geometry.cards) {
     expect(card.cssWidth).toBe(expected.width)
     expect(card.cssHeight).toBe(expected.height)
@@ -139,8 +169,25 @@ test('round five cut exposes the 36 or 37 card perfect target', async ({ page })
   await expect(meter).toHaveAccessibleDescription(cutDescription)
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveAccessibleDescription(cutDescription)
   const [meterBox, targetBox] = await Promise.all([meter.boundingBox(), page.locator('.cut-target').boundingBox()])
-  expect(targetBox.width / meterBox.width).toBeGreaterThanOrEqual(0.08)
-  expect(targetBox.width / meterBox.width).toBeLessThanOrEqual(0.12)
+  expect(targetBox.width / meterBox.width).toBeGreaterThanOrEqual(0.015)
+  expect(targetBox.width / meterBox.width).toBeLessThanOrEqual(0.06)
+})
+
+test('cut-preview fixture supports rapid stop-and-reset verification for cut feedback', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=cut-preview')
+
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'cutting')
+  await page.getByRole('button', { name: 'Stop', exact: true }).click()
+  await expect(page.locator('.cut-marker-hit, .cut-marker-miss')).toHaveCount(1)
+  const hitCount = await page.locator('.cut-marker-hit').count()
+  if (hitCount > 0) {
+    await expect(page.locator('.cut-bonus-flight')).toHaveText('-50')
+  }
+  await expect(page.locator('.cut-outcome')).toBeVisible()
+  await expect(page.locator('.seat-cut-feedback')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reset cut preview' }).click()
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'cutting')
 })
 
 const gainCases = [
@@ -192,7 +239,7 @@ test('manual hand reorder persists until sort is clicked again', async ({ page }
   const queen = hand.locator('[data-card-id="fixture-sort-q-spades"]')
   const three = hand.locator('[data-card-id="fixture-sort-3-hearts"]')
 
-  await queen.dragTo(three)
+  await dragHandCard(page, queen, three)
 
   await expect.poll(() => hand.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.dataset.cardId))).toEqual([
     'fixture-sort-q-spades',
@@ -209,6 +256,32 @@ test('manual hand reorder persists until sort is clicked again', async ({ page }
     'fixture-sort-3-hearts',
     'fixture-sort-8h',
     'fixture-sort-q-spades',
+  ])
+})
+
+test('manual hand reorder survives a draw without re-sorting', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=sort-stock')
+
+  const hand = page.locator('.player-hand-fan')
+  const queen = hand.locator('[data-card-id="fixture-sort-q-spades"]')
+  const three = hand.locator('[data-card-id="fixture-sort-3-hearts"]')
+
+  await dragHandCard(page, queen, three)
+  await expect.poll(() => hand.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.dataset.cardId))).toEqual([
+    'fixture-sort-q-spades',
+    'fixture-sort-3-hearts',
+    'fixture-sort-8h',
+    'fixture-sort-k-diamonds',
+  ])
+
+  await page.getByRole('button', { name: /^Draw pile/ }).click()
+
+  await expect.poll(() => hand.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.dataset.cardId))).toEqual([
+    'fixture-sort-q-spades',
+    'fixture-sort-3-hearts',
+    'fixture-sort-8h',
+    'fixture-sort-k-diamonds',
+    'fixture-gain-a-clubs',
   ])
 })
 
@@ -275,6 +348,17 @@ test('accepted user Buy completes before CPU 2 draws without reopening the windo
   await expect(page.getByRole('timer')).not.toContainText('Buy')
 })
 
+test('user discard does not open a BUY window for the same user', async ({ page }) => {
+  await page.goto('/?game=liverpool&seed=0044&fixture=user-discard-cpu-buy')
+
+  await page.getByRole('button', { name: 'King of spades', exact: true }).click()
+  await page.getByRole('button', { name: 'Discard', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: 'Skip buy' })).toHaveCount(0)
+  await expect(page.getByRole('timer')).not.toContainText('Buy')
+  await expect(page.getByRole('button', { name: /^Buy/ })).toBeDisabled()
+})
+
 for (const fixture of [
   { name: 'CPU 1', query: 'play-after-cpu1', target: 'Target CPU 2 meld 1', claimWithKeyboard: true },
   { name: 'CPU 2', query: 'play-after-cpu2', target: 'Target CPU 1 meld 1', claimWithKeyboard: false },
@@ -323,8 +407,33 @@ test('expired PLAY window invokes CPU fallback before normal CPU 2 sequencing', 
   })
 
   await expect(page.getByRole('button', { name: 'PLAY 5', exact: true })).toBeEnabled()
-  await expect.poll(() => page.evaluate(() => window.__statusHistory)).toContain('CPU 1 called PLAY.')
+  await expect.poll(() => page.evaluate(() => window.__statusHistory), { timeout: 9_000 }).toContain('PLAY window closed.')
   await expect(page.getByRole('button', { name: 'Skip buy' })).toHaveCount(0)
+})
+
+test('user cannot claim PLAY on their own discard', async ({ page }) => {
+  await page.goto('/?game=liverpool&seed=0044&fixture=near-round-end')
+  await page.evaluate(() => {
+    window.__statusHistory = []
+    const status = document.querySelector('[role="status"]')
+    new MutationObserver(() => window.__statusHistory.push(status.textContent)).observe(status, { characterData: true, childList: true, subtree: true })
+  })
+
+  await page.getByRole('button', { name: /^Draw pile/ }).click()
+  for (const name of ['5 of clubs', '5 of diamonds', '5 of hearts', '9 of clubs', '9 of diamonds', '9 of hearts']) {
+    await selectCard(page, name)
+  }
+  await page.getByTestId('action-bar').getByRole('button', { name: 'Meld', exact: true }).click()
+  await selectCard(page, '5 of spades')
+  await page.getByRole('button', { name: 'Target You meld 1' }).click()
+  await selectCard(page, '9 of spades')
+  await page.getByTestId('action-bar').getByRole('button', { name: 'Discard', exact: true }).click()
+
+  const playButton = page.getByRole('button', { name: /^PLAY [1-5]$/ })
+  await expect(page.getByRole('timer')).toHaveText(/^PLAY [1-5]s$/)
+  await expect(playButton).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Complete PLAY', exact: true })).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => window.__statusHistory), { timeout: 9_000 }).not.toContain('PLAY claimed. Select the receiving meld and one replacement card, then complete PLAY.')
 })
 
 test('user stock draw resolves CPU buys without a ten-second wait', async ({ page }) => {

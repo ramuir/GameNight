@@ -38,6 +38,7 @@ function cloneState(state) {
     stock: state.stock.map(cloneCard),
     discardPile: state.discardPile.map((entry) => ({ ...entry, card: cloneCard(entry.card) })),
     scores: { ...state.scores },
+    justTakenDiscard: state.justTakenDiscard ? { ...state.justTakenDiscard } : null,
   }
 }
 
@@ -295,6 +296,7 @@ export function drawFromStock(state, playerId, rng = Math.random) {
   }
   next.players[playerIndex].hand.push(next.stock.pop())
   next.phase = 'action'
+  next.justTakenDiscard = null
   return next
 }
 
@@ -306,6 +308,7 @@ export function takeTopDiscard(state, playerId) {
   next.players[playerIndex].hand.push(top.card)
   next.discardPile.pop()
   next.phase = 'action'
+  next.justTakenDiscard = { playerId, cardId: top.card.id }
   return next
 }
 
@@ -397,9 +400,13 @@ export function discardCard(state, playerId, cardId) {
   }
   const card = state.players[playerIndex].hand.find((candidate) => candidate.id === cardId)
   if (!card) throw new Error('Discard card must be in the player hand')
+  if (state.justTakenDiscard?.playerId === playerId && state.justTakenDiscard.cardId === cardId) {
+    throw new Error('Cannot discard the same card taken from discard this turn')
+  }
   const next = cloneState(state)
   next.players[playerIndex].hand = removeCards(next.players[playerIndex].hand, [cardId])
   next.discardPile.push({ card, discardedBy: playerId, frozen: false })
+  next.justTakenDiscard = null
   if (next.players[playerIndex].hand.length === 0) return completeRound(next, playerId)
   next.activePlayerIndex = (playerIndex + 1) % next.players.length
   next.phase = 'draw'

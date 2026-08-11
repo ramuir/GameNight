@@ -48,7 +48,7 @@ function GameSelectorDropdown({ value, onSelect, isOpen, onToggle }) {
         aria-controls="game-selector-menu"
         onClick={onToggle}
       >
-        <span>{value === 'none' ? activeOption.label : 'Switch game'}</span>
+        <span>{value === 'none' ? activeOption.label : `${activeOption.label}`}</span>
       </button>
 
       <ul id="game-selector-menu" className="game-dropdown-menu" role="listbox" aria-label="Game" hidden={!isOpen}>
