@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { KingsInTheCornerGame } from './games/kingsInTheCorner/KingsInTheCornerGame.jsx'
 import { ConnectFourGame } from './games/connectFour/ConnectFourGame.jsx'
+import { LiverpoolGame } from './games/liverpool/LiverpoolGame.jsx'
 
 const games = {
   none: {
@@ -17,19 +18,20 @@ const games = {
     title: 'Connect Four',
     description: 'Preview the structure-first Connect Four board layout and regions.',
   },
-  nextGame: {
-    title: 'Next Game',
-    description: 'Placeholder slot for the next playable table.',
+  liverpool: {
+    title: 'Liverpool',
+    description: 'Play on the Liverpool table with dual decks, meld zones, and cut setup.',
   },
 }
 
-const launchableGameKeys = ['kingsInTheCorner', 'connectFour']
-const carouselGameKeys = [...launchableGameKeys, 'nextGame']
+const launchableGameKeys = ['kingsInTheCorner', 'connectFour', 'liverpool']
+const carouselGameKeys = [...launchableGameKeys]
 
 const gameSelectorOptions = [
   { value: 'none', label: 'GameNight Home' },
   { value: 'kingsInTheCorner', label: 'Kings in the Corner' },
   { value: 'connectFour', label: 'Connect Four' },
+  { value: 'liverpool', label: 'Liverpool' },
 ]
 
 function GameSelectorDropdown({ value, onSelect, isOpen, onToggle }) {
@@ -46,7 +48,7 @@ function GameSelectorDropdown({ value, onSelect, isOpen, onToggle }) {
         aria-controls="game-selector-menu"
         onClick={onToggle}
       >
-        <span>{activeOption.label}</span>
+        <span>{value === 'none' ? activeOption.label : `${activeOption.label}`}</span>
       </button>
 
       <ul id="game-selector-menu" className="game-dropdown-menu" role="listbox" aria-label="Game" hidden={!isOpen}>
@@ -175,6 +177,8 @@ function App() {
           <KingsInTheCornerGame />
         ) : selectedGame === 'connectFour' ? (
           <ConnectFourGame />
+        ) : selectedGame === 'liverpool' ? (
+          <LiverpoolGame />
         ) : (
           <section className="home-focus">
             <h1 className="home-focus-title">Game Night</h1>
