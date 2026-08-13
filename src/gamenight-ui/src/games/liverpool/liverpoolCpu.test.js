@@ -78,6 +78,19 @@ test('chooses a legal discard take when it completes the contract and a legal de
   assert.equal(applyAction(drawState, 'cpu-1', drawAction).phase, 'action')
 })
 
+test('draw phase takes discard for unopened round-seven run progress', () => {
+  const progressState = stateFor({
+    roundNumber: 7,
+    phase: 'draw',
+    hand: [natural('two-h', '2'), natural('three-h', '3'), natural('five-h', '5')],
+    top: natural('four-h', '4'),
+  })
+
+  const action = chooseLiverpoolCpuAction(progressState, 'cpu-1', fixedFirst)
+
+  assert.deepEqual(action, { type: 'take-discard' })
+})
+
 test('plays a complete initial contract and then legal layoffs before discarding', () => {
   const hand = [
     ...group('fives', '5'),
@@ -108,6 +121,21 @@ test('cpu does not discard the same card it just took from discard', () => {
 
   const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
   assert.deepEqual(action, { type: 'discard', cardId: 'safe-discard' })
+})
+
+test('cpu avoids layoffs that would strand an illegal blocked discard', () => {
+  const state = stateFor({
+    phase: 'action',
+    hasOpened: true,
+    hand: [natural('taken-card', 'K', 'clubs'), natural('layoff-card', '5', 'spades')],
+  })
+  state.justTakenDiscard = { playerId: 'cpu-1', cardId: 'taken-card' }
+  state.players[0].hasOpened = true
+  state.players[0].melds = [{ type: 'group', cards: group('owner-fives', '5') }]
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
+
+  assert.deepEqual(action, { type: 'discard', cardId: 'layoff-card' })
 })
 
 test('round 7 CPU opens only when exactly three runs consume its full hand', () => {
@@ -276,6 +304,24 @@ test('round-seven unopened discard keeps run-critical cards over irrelevant grou
   const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
   assert.equal(action.type, 'discard')
   assert.ok(['two-c', 'two-d', 'two-s'].includes(action.cardId))
+})
+
+test('round-seven unopened discard keeps connected run card over isolated high deadwood', () => {
+  const state = stateFor({
+    roundNumber: 7,
+    hasOpened: false,
+    hand: [
+      natural('run-5h', '5', 'hearts'),
+      natural('run-6h', '6', 'hearts'),
+      natural('run-8h', '8', 'hearts'),
+      natural('isolated-king-c', 'K', 'clubs'),
+    ],
+  })
+
+  const action = chooseLiverpoolCpuAction(state, 'cpu-1', fixedFirst)
+
+  assert.equal(action.type, 'discard')
+  assert.equal(action.cardId, 'isolated-king-c')
 })
 
 test('round-seven seeded late-hand simulations include cpu wins in mixed-seat play', () => {
@@ -563,5 +609,33 @@ test('run-only buy guard blocks oversized speculative hands', () => {
   hand.push(natural('queen-h', 'Q', 'hearts'), natural('king-h', 'K', 'hearts'))
   const state = stateFor({ hand, top: natural('ace-h', 'A', 'hearts'), activePlayerIndex: 2, roundNumber: 7 })
 
+  assert.equal(shouldBuyDiscard(state, 'cpu-1'), false)
+})
+
+test('round-seven buy rejects off-suit rank duplicate without run support', () => {
+  const state = stateFor({
+    hand: [natural('nine-c', '9', 'clubs'), natural('king-h', 'K', 'hearts')],
+    top: natural('nine-s', '9', 'spades'),
+    activePlayerIndex: 2,
+    roundNumber: 7,
+  })
+
+  assert.equal(shouldBuyDiscard(state, 'cpu-1'), false)
+})
+
+test('round-seven buy rejects speculative gains at max run-only hand size', () => {
+  const hand = [
+    ...run('r7-hearts', ['2', '3', '4', '6', '8', '9'], 'hearts'),
+    ...run('r7-spades', ['2', '4', '6', '8', '10', 'Q'], 'spades'),
+    ...run('r7-clubs', ['3', '5', '7', '9'], 'clubs'),
+  ]
+  const state = stateFor({
+    hand,
+    top: natural('weak-buy', 'K', 'diamonds'),
+    activePlayerIndex: 2,
+    roundNumber: 7,
+  })
+
+  assert.equal(state.players[1].hand.length, 16)
   assert.equal(shouldBuyDiscard(state, 'cpu-1'), false)
 })

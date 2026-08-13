@@ -11,9 +11,10 @@ const RUN_RANK_VALUE = Object.freeze(Object.fromEntries(
 ))
 const MAX_MELD_CANDIDATES_PER_TYPE = 12_000
 const MAX_CANDIDATE_GENERATION_STATES = 100_000
-const MAX_CONTRACT_SEARCH_STATES = 50_000
+const MAX_CONTRACT_SEARCH_STATES = 60_000
 const MAX_RUN_ONLY_BUY_HAND_SIZE = 16
-const MAX_SPECULATIVE_RUN_BUY_HAND_SIZE = 20
+const MAX_SPECULATIVE_RUN_BUY_HAND_SIZE = 18
+const ROUND_SEVEN_BUY_HAND_LIMIT = 12
 
 function completesShortRun(hand, discard, { allowSingleGap = false } = {}) {
   if (discard.isJoker || !RUN_RANK_VALUE[discard.rank] || !discard.suit) return false
@@ -76,6 +77,123 @@ function helpsExistingMeld(state, discard) {
   ))
 }
 
+function discardAdvancesUnopenedContract(roundNumber, hand, discard) {
+  const roundContract = ROUND_CONTRACTS[roundNumber] ?? []
+  const requiredTypes = new Set(roundContract)
+  const runOnlyContract = roundContract.length > 0 && roundContract.every((type) => type === 'run')
+  const groupProgress = requiredTypes.has('group') && completesShortGroup(hand, discard)
+  if (groupProgress) return true
+
+  if (!requiredTypes.has('run')) return false
+  if (runOnlyContract && hand.length > MAX_RUN_ONLY_BUY_HAND_SIZE) return false
+
+  const strictRunProgress = completesShortRun(hand, discard)
+  if (strictRunProgress) return true
+
+  return runOnlyContract
+    && hand.length <= MAX_SPECULATIVE_RUN_BUY_HAND_SIZE
+    && completesShortRun(hand, discard, { allowSingleGap: true })
+}
+
+function rankDistanceForRun(leftRank, rightRank) {
+  if (leftRank === 'A' && rightRank === 'K') return 1
+  if (leftRank === 'K' && rightRank === 'A') return 1
+  const leftValue = RUN_RANK_VALUE[leftRank]
+  const rightValue = RUN_RANK_VALUE[rightRank]
+  if (!leftValue || !rightValue) return null
+  return Math.abs(leftValue - rightValue)
+}
+
+function hasSameSuitRunNeighbor(hand, card, maxDistance = 2) {
+  if (card.isJoker || !card.suit || !RUN_RANK_VALUE[card.rank]) return false
+  return hand.some((candidate) => {
+    if (candidate.isJoker || candidate.suit !== card.suit || candidate.id === card.id) return false
+    const distance = rankDistanceForRun(card.rank, candidate.rank)
+    return distance !== null && distance <= maxDistance
+  })
+}
+
+function isOffSuitRankDuplicateWithoutRunSupport(hand, discard) {
+  if (discard.isJoker) return false
+  const sameRankOtherSuit = hand.some((card) => (
+    !card.isJoker && card.rank === discard.rank && card.suit !== discard.suit
+  ))
+  return sameRankOtherSuit && !hasSameSuitRunNeighbor(hand, discard)
+}
+
+// A round 7 buy adds two cards that must also fit the three-run go-out, so it stays rare.
+function shouldBuyRoundSevenRunDiscard(hand, discard) {
+  if (!discard || discard.isJoker) return false
+  if (hand.length > ROUND_SEVEN_BUY_HAND_LIMIT) return false
+  if (hand.some((card) => !card.isJoker && card.rank === discard.rank && card.suit === discard.suit)) return false
+  if (isOffSuitRankDuplicateWithoutRunSupport(hand, discard)) return false
+  if (completesShortRun(hand, discard)) return true
+
+  const sameSuitNaturals = hand.filter((card) => (
+    !card.isJoker && card.suit === discard.suit && RUN_RANK_VALUE[card.rank]
+  ))
+  if (sameSuitNaturals.length < 2) return false
+
+  return completesShortRun(hand, discard, { allowSingleGap: true })
+}
+
+// Greedily reserves up to three disjoint four-card run windows the hand is closest to finishing.
+function roundSevenPlannedCardIds(hand) {
+  const valuesBySuit = new Map()
+  for (const card of hand) {
+    if (card.isJoker || !card.suit || !RUN_RANK_VALUE[card.rank]) continue
+    const suitValues = valuesBySuit.get(card.suit) ?? new Map()
+    for (const value of card.rank === 'A' ? [1, 14] : [RUN_RANK_VALUE[card.rank]]) {
+      if (!suitValues.has(value)) suitValues.set(value, card)
+    }
+    valuesBySuit.set(card.suit, suitValues)
+  }
+
+  const windows = []
+  for (const [suit, suitValues] of valuesBySuit) {
+    for (let start = 1; start <= 11; start += 1) {
+      const cards = []
+      for (let value = start; value <= start + 3; value += 1) {
+        const card = suitValues.get(value)
+        if (card) cards.push(card)
+      }
+      if (cards.length >= 2) windows.push({ suit, start, cards })
+    }
+  }
+
+  windows.sort((left, right) => (
+    right.cards.length - left.cards.length
+    || left.suit.localeCompare(right.suit)
+    || left.start - right.start
+  ))
+
+  const planned = new Set()
+  let selectedWindows = 0
+  for (const window of windows) {
+    if (selectedWindows === 3) break
+    if (window.cards.some((card) => planned.has(card.id))) continue
+    for (const card of window.cards) planned.add(card.id)
+    selectedWindows += 1
+  }
+  return planned
+}
+
+function canAttemptRoundSevenOpenFast(hand) {
+  if (hand.length <= 14) return true
+
+  const suitCounts = new Map()
+  let connectedPairs = 0
+  for (const card of hand) {
+    if (card.isJoker || !card.suit || !RUN_RANK_VALUE[card.rank]) continue
+    suitCounts.set(card.suit, (suitCounts.get(card.suit) ?? 0) + 1)
+    if (hasSameSuitRunNeighbor(hand, card, 1)) connectedPairs += 1
+  }
+
+  const richSuits = [...suitCounts.values()].filter((count) => count >= 4).length
+  if (hand.length >= 19) return richSuits >= 3 && connectedPairs >= 8
+  return richSuits >= 2 && connectedPairs >= 4
+}
+
 export function shouldBuyDiscard(state, playerId) {
   const player = state?.players?.find((candidate) => candidate.id === playerId)
   const activePlayer = state?.players?.[state.activePlayerIndex]
@@ -85,22 +203,8 @@ export function shouldBuyDiscard(state, playerId) {
 
   const discard = topDiscard.card
   if (player.hasOpened) return helpsExistingMeld(state, discard)
-
-  const roundContract = ROUND_CONTRACTS[state.roundNumber] ?? []
-  const requiredTypes = new Set(roundContract)
-  const runOnlyContract = roundContract.length > 0 && roundContract.every((type) => type === 'run')
-  const groupProgress = requiredTypes.has('group') && completesShortGroup(player.hand, discard)
-  if (groupProgress) return true
-
-  if (!requiredTypes.has('run')) return false
-  if (runOnlyContract && player.hand.length > MAX_RUN_ONLY_BUY_HAND_SIZE) return false
-
-  const strictRunProgress = completesShortRun(player.hand, discard)
-  if (strictRunProgress) return true
-
-  return runOnlyContract
-    && player.hand.length <= MAX_SPECULATIVE_RUN_BUY_HAND_SIZE
-    && completesShortRun(player.hand, discard, { allowSingleGap: true })
+  if (state.roundNumber === 7) return shouldBuyRoundSevenRunDiscard(player.hand, discard)
+  return discardAdvancesUnopenedContract(state.roundNumber, player.hand, discard)
 }
 
 function choose(options, tieBreaker) {
@@ -249,6 +353,14 @@ function findInitialContract(roundNumber, hand, { requireResidualForNonRoundSeve
   const candidatesByType = Object.fromEntries(
     [...new Set(contract)].map((type) => [type, meldCandidates(hand, type)]),
   )
+  if (roundNumber === 7) {
+    for (const type of Object.keys(candidatesByType)) {
+      candidatesByType[type].sort((left, right) => (
+        right.cardIds.length - left.cardIds.length
+        || left.cardIds.join('|').localeCompare(right.cardIds.join('|'))
+      ))
+    }
+  }
   const selected = []
   let searchStates = 0
 
@@ -311,11 +423,15 @@ export function findLiverpoolInitialContract(roundNumber, hand, options) {
 function legalLayoffs(state, player) {
   if (!player.hasOpened || player.hand.length <= 1) return []
   const actions = []
+  const blockedDiscardCardId = state.justTakenDiscard?.playerId === player.id
+    ? state.justTakenDiscard.cardId
+    : null
 
   for (const owner of state.players) {
     for (let meldIndex = 0; meldIndex < owner.melds.length; meldIndex += 1) {
       const meld = owner.melds[meldIndex]
       for (const card of player.hand) {
+        if (blockedDiscardCardId && player.hand.length === 2 && card.id !== blockedDiscardCardId) continue
         if (validateMeld([...meld.cards, card], meld.type).valid) {
           actions.push({
             type: 'lay-off',
@@ -377,6 +493,22 @@ function canParticipateInRun(hand, card) {
   return false
 }
 
+function runStickiness(hand, card) {
+  if (card.isJoker || !card.suit || !RUN_RANK_VALUE[card.rank]) return 0
+  const rankValue = RUN_RANK_VALUE[card.rank]
+  let support = 0
+  for (const candidate of hand) {
+    if (candidate.id === card.id || candidate.isJoker || candidate.suit !== card.suit) continue
+    const candidateValue = RUN_RANK_VALUE[candidate.rank]
+    if (!candidateValue) continue
+    const distance = Math.abs(candidateValue - rankValue)
+    if (distance === 1) support += 2
+    else if (distance === 2) support += 1
+    if ((card.rank === 'A' && candidate.rank === 'K') || (card.rank === 'K' && candidate.rank === 'A')) support += 1
+  }
+  return support
+}
+
 function isCardUsefulForOwnHand(hand, card, roundContract = null) {
   if (!Array.isArray(roundContract) || roundContract.length === 0) {
     return canParticipateInGroup(hand, card) || canParticipateInRun(hand, card)
@@ -398,17 +530,25 @@ function enablesPlayForOthers(state, discarderId, card) {
 function chooseDiscard(state, player, tieBreaker) {
   const allowPlayDiscard = Number(tieBreaker()) < 0.15
   const roundContract = ROUND_CONTRACTS[state.roundNumber] ?? null
+  const runOnlyRound = Array.isArray(roundContract) && roundContract.length > 0 && roundContract.every((type) => type === 'run')
+  const preserveRuns = runOnlyRound && state.roundNumber === 7 && !player.hasOpened
   const blockedDiscardCardId = state.justTakenDiscard?.playerId === player.id
     ? state.justTakenDiscard.cardId
     : null
   const naturalCards = player.hand.filter((card) => !card.isJoker)
   const candidatePool = naturalCards.length > 0 ? naturalCards : player.hand
   const discardCandidates = candidatePool.filter((card) => card.id !== blockedDiscardCardId)
-  const scoredCards = discardCandidates.length > 0 ? discardCandidates : candidatePool
+  const legalCandidates = discardCandidates.length > 0 ? discardCandidates : candidatePool
+  const plannedCardIds = preserveRuns ? roundSevenPlannedCardIds(player.hand) : null
+  const unplannedCandidates = plannedCardIds
+    ? legalCandidates.filter((card) => !plannedCardIds.has(card.id))
+    : []
+  const scoredCards = unplannedCandidates.length > 0 ? unplannedCandidates : legalCandidates
   const scored = scoredCards.map((card) => ({
     cardId: card.id,
     useful: isCardUsefulForOwnHand(player.hand, card, roundContract),
     enablesPlay: enablesPlayForOthers(state, player.id, card),
+    runStickiness: preserveRuns ? runStickiness(player.hand, card) : 0,
     score: (scoreCard(card) * 10) - cardSupport(player.hand, card),
   }))
   const bestPriority = Math.max(...scored.map((candidate) => {
@@ -424,7 +564,9 @@ function chooseDiscard(state, player, tieBreaker) {
       if (candidate.useful && !candidate.enablesPlay) return bestPriority === 2
       return bestPriority === (allowPlayDiscard ? 1 : 0)
     })
-    .map((candidate) => candidate.score))
+    .map((candidate) => (
+      candidate.score - (preserveRuns ? candidate.runStickiness * 3 : 0)
+    )))
   const best = scored
     .filter((candidate) => {
       const priority = (!candidate.useful && !candidate.enablesPlay)
@@ -434,7 +576,8 @@ function chooseDiscard(state, player, tieBreaker) {
           : (candidate.useful && !candidate.enablesPlay)
             ? 2
             : (allowPlayDiscard ? 1 : 0)
-      return priority === bestPriority && candidate.score === bestScore
+      const weightedScore = candidate.score - (preserveRuns ? candidate.runStickiness * 3 : 0)
+      return priority === bestPriority && weightedScore === bestScore
     })
     .sort((left, right) => left.cardId.localeCompare(right.cardId))
   return { type: 'discard', cardId: choose(best, tieBreaker).cardId }
@@ -450,13 +593,15 @@ export function chooseLiverpoolCpuAction(state, playerId, tieBreaker = Math.rand
   if (state.phase === 'draw') {
     const topDiscard = state.discardPile.at(-1)
     if (topDiscard && !topDiscard.frozen) {
-      const completesContract = !player.hasOpened
-        && !findInitialContract(state.roundNumber, player.hand)
-        && findInitialContract(state.roundNumber, [...player.hand, topDiscard.card])
+      const duplicateForRunRound = state.roundNumber === 7
+        && isOffSuitRankDuplicateWithoutRunSupport(player.hand, topDiscard.card)
+      const progressesContract = !player.hasOpened
+        && !duplicateForRunRound
+        && discardAdvancesUnopenedContract(state.roundNumber, player.hand, topDiscard.card)
       const enablesLayoff = player.hasOpened && state.players.some((owner) => (
         owner.melds.some((meld) => validateMeld([...meld.cards, topDiscard.card], meld.type).valid)
       ))
-      if (completesContract || enablesLayoff) return { type: 'take-discard' }
+      if (progressesContract || enablesLayoff) return { type: 'take-discard' }
     }
     return { type: 'draw-stock' }
   }
@@ -464,7 +609,8 @@ export function chooseLiverpoolCpuAction(state, playerId, tieBreaker = Math.rand
   if (state.phase !== 'action') throw new Error(`Unsupported CPU phase: ${state.phase}`)
 
   if (!player.hasOpened) {
-    const melds = findInitialContract(state.roundNumber, player.hand)
+    const canSearchRoundSeven = state.roundNumber !== 7 || canAttemptRoundSevenOpenFast(player.hand)
+    const melds = canSearchRoundSeven ? findInitialContract(state.roundNumber, player.hand) : null
     if (melds) return { type: 'meld-initial-contract', melds }
   }
 
