@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   RECORD_STORAGE_KEY,
+  clearRecordEntry,
   computeWinRate,
   createEmptyRecordBook,
   createSessionScopeId,
@@ -118,6 +119,81 @@ test('a replayed round number in a new session still counts because the scope ch
   })
 
   assert.deepEqual(getRecordEntry(book, 'connectFour', 'medium'), { wins: 2, losses: 0, draws: 0 })
+})
+
+test('clearRecordEntry clears only the shown game and difficulty', () => {
+  let book = recordOutcome(createEmptyRecordBook(), {
+    gameKey: 'connectFour',
+    difficulty: 'medium',
+    outcome: 'win',
+    completionId: 'c4-medium',
+  })
+  book = recordOutcome(book, {
+    gameKey: 'connectFour',
+    difficulty: 'hard',
+    outcome: 'loss',
+    completionId: 'c4-hard',
+  })
+  book = recordOutcome(book, {
+    gameKey: 'kingsInTheCorner',
+    difficulty: 'medium',
+    outcome: 'win',
+    completionId: 'kitc-medium',
+  })
+
+  const cleared = clearRecordEntry(book, 'connectFour', 'medium')
+
+  assert.deepEqual(getRecordEntry(cleared, 'connectFour', 'medium'), { wins: 0, losses: 0, draws: 0 })
+  assert.deepEqual(getRecordEntry(cleared, 'connectFour', 'hard'), { wins: 0, losses: 1, draws: 0 })
+  assert.deepEqual(getRecordEntry(cleared, 'kingsInTheCorner', 'medium'), { wins: 1, losses: 0, draws: 0 })
+})
+
+test('clearRecordEntry drops the game once its last difficulty is cleared', () => {
+  const book = recordOutcome(createEmptyRecordBook(), {
+    gameKey: 'liverpool',
+    difficulty: 'standard',
+    outcome: 'win',
+    completionId: 'lv-1',
+  })
+
+  const cleared = clearRecordEntry(book, 'liverpool', 'standard')
+
+  assert.deepEqual(cleared.games, {})
+  assert.equal(computeWinRate(getRecordEntry(cleared, 'liverpool', 'standard')), null)
+})
+
+test('clearRecordEntry leaves an unknown game or difficulty untouched', () => {
+  const book = recordOutcome(createEmptyRecordBook(), {
+    gameKey: 'connectFour',
+    difficulty: 'easy',
+    outcome: 'win',
+    completionId: 'c4-easy',
+  })
+
+  assert.deepEqual(clearRecordEntry(book, 'connectFour', 'hard').games, book.games)
+  assert.deepEqual(clearRecordEntry(book, 'missingGame', 'easy').games, book.games)
+})
+
+test('a cleared record starts counting again from zero', () => {
+  const storage = createMemoryStorage()
+  let book = recordOutcome(createEmptyRecordBook(), {
+    gameKey: 'connectFour',
+    difficulty: 'easy',
+    outcome: 'win',
+    completionId: 'c4-a',
+  })
+
+  book = clearRecordEntry(book, 'connectFour', 'easy')
+  saveRecordBook(storage, book)
+
+  book = recordOutcome(loadRecordBook(storage), {
+    gameKey: 'connectFour',
+    difficulty: 'easy',
+    outcome: 'loss',
+    completionId: 'c4-b',
+  })
+
+  assert.deepEqual(getRecordEntry(book, 'connectFour', 'easy'), { wins: 0, losses: 1, draws: 0 })
 })
 
 test('getGameTotals sums every difficulty for one game', () => {

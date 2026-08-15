@@ -298,6 +298,34 @@ test('bought cards are immediately visible, stacked in sort order, and clickable
   await expect(boughtCard).toHaveAttribute('aria-pressed', 'true')
 })
 
+test('double-clicking empty hand space clears selection without changing the round', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=sort-stock')
+
+  const selectedCard = page.locator('[data-card-id="fixture-sort-8h"]')
+  await expect(selectedCard).toHaveAttribute('aria-pressed', 'true')
+  const handArea = page.locator('.player-hand-arc')
+  const handBox = await handArea.boundingBox()
+  await page.mouse.dblclick(handBox.x + 10, handBox.y + 10)
+
+  await expect(selectedCard).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
+  await expect(page.getByRole('button', { name: 'Meld', exact: true })).toBeDisabled()
+})
+
+test('double-clicking a hand card selects every card in a dense final hand', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=round-seven-pat-hand')
+
+  const cards = page.locator('.player-hand-card')
+  const targetCard = cards.last()
+  const targetPoint = await targetCard.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  })
+  await page.mouse.dblclick(targetPoint.x, targetPoint.y)
+  await expect(page.locator('.player-hand-card[aria-pressed="true"]')).toHaveCount(12)
+  await expect(page.getByRole('button', { name: 'Meld', exact: true })).toBeEnabled()
+})
+
 test('round seven pat hand exposes every card for immediate selection', async ({ page }) => {
   await page.goto('/?game=liverpool&fixture=round-seven-pat-hand')
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './GameRecordPopup.css'
 import { computeWinRate, getTotalGames } from './gameRecordStore.js'
 
@@ -20,13 +20,18 @@ export function GameRecordPopup({
   children,
   onPlayAgain,
   onClose,
+  onResetRecord,
   playAgainLabel = 'Play Again',
 }) {
   const cardRef = useRef(null)
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false)
+  const [hasClearedRecord, setHasClearedRecord] = useState(false)
   const copy = OUTCOME_COPY[outcome] ?? OUTCOME_COPY.draw
   const winRate = entry ? computeWinRate(entry) : null
+  const totalGames = entry ? getTotalGames(entry) : 0
+  const canResetRecord = Boolean(onResetRecord) && (totalGames > 0 || hasClearedRecord)
   const footerEntries = entry
-    ? [...footerItems, { label: 'Total Games', value: getTotalGames(entry) }]
+    ? [...footerItems, { label: 'Total Games', value: totalGames }]
     : footerItems
 
   useEffect(() => {
@@ -35,14 +40,21 @@ export function GameRecordPopup({
 
   useEffect(() => {
     function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        onClose()
+      if (event.key !== 'Escape') {
+        return
       }
+
+      if (isConfirmingReset) {
+        setIsConfirmingReset(false)
+        return
+      }
+
+      onClose()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [onClose, isConfirmingReset])
 
   return (
     <div className="game-record-backdrop" onClick={onClose}>
@@ -113,6 +125,40 @@ export function GameRecordPopup({
             Close
           </button>
         </div>
+
+        {canResetRecord ? (
+          <div className="game-record-reset">
+            {hasClearedRecord ? (
+              <span className="game-record-reset-prompt" role="status">
+                Record cleared
+              </span>
+            ) : isConfirmingReset ? (
+              <>
+                <span className="game-record-reset-prompt">Clear this record?</span>
+                <span className="game-record-reset-choices">
+                  <button
+                    type="button"
+                    className="game-record-reset-button game-record-reset-danger"
+                    onClick={() => {
+                      onResetRecord()
+                      setIsConfirmingReset(false)
+                      setHasClearedRecord(true)
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button type="button" className="game-record-reset-button" onClick={() => setIsConfirmingReset(false)}>
+                    Keep
+                  </button>
+                </span>
+              </>
+            ) : (
+              <button type="button" className="game-record-reset-button" onClick={() => setIsConfirmingReset(true)}>
+                Reset Record
+              </button>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   )

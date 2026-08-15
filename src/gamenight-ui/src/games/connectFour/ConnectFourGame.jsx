@@ -1,6 +1,8 @@
 import './ConnectFourGame.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
+import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
 import {
   BOARD_COLUMNS,
   BOARD_ROWS,
@@ -13,8 +15,10 @@ import {
 } from './connectFourLogic.js'
 import { chooseConnectFourMove } from './connectFourAi.js'
 
+const GAME_KEY = 'connectFour'
 const DROP_ROW_TRAVEL_MS = 220
 const DROP_MIN_DURATION_MS = 420
+const RESULT_REVEAL_DELAY_MS = 900
 
 function ConnectFourChip({ state = 'empty', isBlinking = false, isLanded = false }) {
   return (
@@ -53,25 +57,57 @@ export function ConnectFourGame() {
   const [undoQueue, setUndoQueue] = useState([])
   const [dropProgress, setDropProgress] = useState(0)
   const [landedSlotId, setLandedSlotId] = useState(null)
-  const [playerWins, setPlayerWins] = useState(0)
+  const [recordBook, setRecordBook] = useState(() => loadRecordBook(window.localStorage))
+  const [roundId, setRoundId] = useState(1)
+  const [sessionScope] = useState(createSessionScopeId)
+  const [isResultPopupVisible, setIsResultPopupVisible] = useState(false)
   const [isComputerThinking, setIsComputerThinking] = useState(false)
   const [impactBlinkSlotId, setImpactBlinkSlotId] = useState(null)
   const boardGridRef = useRef(null)
 
   const isAnimating = Boolean(dropAnimation || undoAnimation)
   const activePlayer = gameState.activePlayer
-  const canInteract = !isAnimating && !isComputerThinking && !gameState.winner && !gameState.isDraw
-  const canUndo = !isAnimating && !isComputerThinking && gameState.history?.length > 0
+  const isRoundComplete = Boolean(gameState.winner) || gameState.isDraw
+  const canInteract = !isAnimating && !isComputerThinking && !isRoundComplete
+  const canUndo = !isAnimating && !isComputerThinking && !isRoundComplete && gameState.history?.length > 0
   const statusText = getStatusText(gameState)
   const winnerLabel = gameState.winner ? (gameState.winner === 'red' ? 'Red' : 'Green') : null
+  const roundOutcome = gameState.winner === 'red' ? 'win' : gameState.winner === 'green' ? 'loss' : gameState.isDraw ? 'draw' : null
+  const recordEntry = getRecordEntry(recordBook, GAME_KEY, difficulty)
 
   useEffect(() => {
-    if (gameState.winner !== 'red') {
-      return
+    if (!roundOutcome) {
+      return undefined
     }
 
-    setPlayerWins((currentWins) => currentWins + 1)
-  }, [gameState.winner])
+    setRecordBook((currentBook) => {
+      const nextBook = recordOutcome(currentBook, {
+        gameKey: GAME_KEY,
+        difficulty,
+        outcome: roundOutcome,
+        completionId: `${GAME_KEY}-${sessionScope}-${roundId}-${difficulty}-${roundOutcome}`,
+      })
+
+      if (nextBook !== currentBook) {
+        saveRecordBook(window.localStorage, nextBook)
+      }
+
+      return nextBook
+    })
+
+    // Let the winning line glow read before the result covers the board.
+    const revealTimer = window.setTimeout(() => setIsResultPopupVisible(true), RESULT_REVEAL_DELAY_MS)
+
+    return () => window.clearTimeout(revealTimer)
+  }, [roundOutcome, difficulty, roundId, sessionScope])
+
+  function handleResetRecord() {
+    setRecordBook((currentBook) => {
+      const nextBook = clearRecordEntry(currentBook, GAME_KEY, difficulty)
+      saveRecordBook(window.localStorage, nextBook)
+      return nextBook
+    })
+  }
 
   useEffect(() => {
     if (undoAnimation) {
@@ -399,6 +435,8 @@ export function ConnectFourGame() {
     setLandedSlotId(null)
     setIsComputerThinking(false)
     setImpactBlinkSlotId(null)
+    setIsResultPopupVisible(false)
+    setRoundId((current) => current + 1)
   }
 
   function handleDifficultyChange() {
@@ -491,7 +529,21 @@ export function ConnectFourGame() {
 
       <p className="connect-four-outcome" aria-live="polite">{statusText}</p>
       </section>
-      <span className="game-shell-badge" aria-label={`${playerWins} win${playerWins === 1 ? '' : 's'}`}>{playerWins}</span>
+
+      {isResultPopupVisible && roundOutcome && (
+        <GameRecordPopup
+          gameName="Connect Four"
+          accent="amber"
+          outcome={roundOutcome}
+          message={statusText}
+          footerItems={[{ label: 'Difficulty', value: difficulty }]}
+          entry={recordEntry}
+          onPlayAgain={handleResetBoard}
+          onClose={() => setIsResultPopupVisible(false)}
+          onResetRecord={handleResetRecord}
+          playAgainLabel="New Game"
+        />
+      )}
     </div>
   )
 }

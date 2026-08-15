@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './LiverpoolGame.css'
+import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
+import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
 import { chooseLiverpoolCpuAction, findLiverpoolInitialContract, shouldBuyDiscard } from './liverpoolCpu.js'
 import {
   ROUND_CONTRACTS,
@@ -19,6 +21,8 @@ import {
 import { chooseCpuCutCount, getPerfectCutTargets, resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', { eager: true, import: 'default' })
+const GAME_KEY = 'liverpool'
+const RECORD_DIFFICULTY = 'standard'
 const USER_ID = 'player'
 const PLAYER_IDS = [USER_ID, 'cpu-1', 'cpu-2']
 const PLAYER_NAMES = { player: 'You', 'cpu-1': 'CPU 1', 'cpu-2': 'CPU 2' }
@@ -62,7 +66,7 @@ function queryOptions() {
 }
 
 function createInitialState(roundNumber = 1, dealerIndex = 1, scores) {
-  const { seed, fixture, dealerIndex: queryDealerIndex } = queryOptions()
+  const { fixture, dealerIndex: queryDealerIndex } = queryOptions()
   if (import.meta.env.DEV && fixture === 'cut-preview' && roundNumber === 1 && !scores) {
     const pending = createPendingRoundState({ roundNumber: 5, playerIds: PLAYER_IDS, dealerIndex: 1 })
     return preparePendingDeal(pending, seededRandom('0046-cut-preview'))
@@ -308,17 +312,6 @@ function resolveCpuBuysThenDraw(state, playerId, rng) {
   return { result, next }
 }
 
-function possiblePlayClaims(state, includeUser = true) {
-  const claims = []
-  for (const player of state.players) {
-    if ((!includeUser && player.id === USER_ID) || (player.id !== USER_ID && player.id === state.players[state.activePlayerIndex].id)) continue
-    for (const target of possiblePlayTargets(state)) {
-      player.hand.forEach((card) => claims.push({ playerId: player.id, ...target, discardCardId: card.id }))
-    }
-  }
-  return claims
-}
-
 function possiblePlayTargets(state) {
   const topDiscard = state.discardPile.at(-1)
   if (state.roundStatus !== 'active' || !topDiscard || topDiscard.frozen) return []
@@ -377,8 +370,7 @@ function SeatBox({ name, score, markers = [], cardCount, className }) {
   )
 }
 
-function RoundSummaryPopup({ state, playerNames }) {
-  const winnerName = state.winnerId ? playerNames[state.winnerId] : (state.roundResult?.winnerId ? playerNames[state.roundResult.winnerId] : 'Blocked round')
+function RoundScoreTable({ state, playerNames }) {
   const roundScores = state.roundResult?.scores ?? {}
   const rows = PLAYER_IDS.map((playerId) => {
     const player = state.players.find((candidate) => candidate.id === playerId)
@@ -392,32 +384,26 @@ function RoundSummaryPopup({ state, playerNames }) {
   })
 
   return (
-    <section className="liverpool-round-summary" role="dialog" aria-label="Hand summary" aria-live="polite">
-      <header className="liverpool-round-summary-header">
-        <strong>{state.roundStatus === 'game-complete' ? 'Game complete' : `Hand ${state.roundNumber} complete`}</strong>
-        <span>{winnerName} won this hand.</span>
-      </header>
-      <table className="liverpool-round-summary-table" aria-label="Round scores and cards remaining">
-        <thead>
-          <tr>
-            <th scope="col">Player</th>
-            <th scope="col">Round</th>
-            <th scope="col">Cards left</th>
-            <th scope="col">Total</th>
+    <table className="liverpool-round-summary-table" aria-label="Round scores and cards remaining">
+      <thead>
+        <tr>
+          <th scope="col">Player</th>
+          <th scope="col">Round</th>
+          <th scope="col">Cards left</th>
+          <th scope="col">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.playerId}>
+            <th scope="row">{row.name}</th>
+            <td>{row.roundScore}</td>
+            <td>{row.cardsLeft}</td>
+            <td>{row.totalScore}</td>
           </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.playerId}>
-              <th scope="row">{row.name}</th>
-              <td>{row.roundScore}</td>
-              <td>{row.cardsLeft}</td>
-              <td>{row.totalScore}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -498,6 +484,10 @@ export function LiverpoolGame() {
   const [cutReveal, setCutReveal] = useState(null)
   const [animatedUserScore, setAnimatedUserScore] = useState(null)
   const [buyHighlightPlayerId, setBuyHighlightPlayerId] = useState(null)
+  const [recordBook, setRecordBook] = useState(() => loadRecordBook(window.localStorage))
+  const [matchId, setMatchId] = useState(1)
+  const [sessionScope] = useState(createSessionScopeId)
+  const [dismissedSummaryKey, setDismissedSummaryKey] = useState(null)
   const cutPositionRef = useRef(0)
   const cutRevealTimerRef = useRef(null)
   const buyHighlightTimerRef = useRef(null)
@@ -816,6 +806,11 @@ export function LiverpoolGame() {
     setDraggedHandCardId(null)
   }
 
+  function handleHandAreaDoubleClick(event) {
+    if (event.target.closest('.player-hand-card')) return
+    setSelectedCards([])
+  }
+
   function handleHandFanDrop(event) {
     if (!draggedHandCardId || event.target !== event.currentTarget) return
     event.preventDefault()
@@ -895,6 +890,7 @@ export function LiverpoolGame() {
       if (gameState.roundStatus === 'game-complete') {
         const next = createPendingRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 1 })
         setReaction(null)
+        setMatchId((current) => current + 1)
         return updateState(next, 'Press Deal to begin Hand 1.')
       }
       const next = advanceRound(gameState)
@@ -924,7 +920,47 @@ export function LiverpoolGame() {
     gameState.startPlayerIndex === 0 ? 'Starts' : null,
     gameState.roundStatus === 'active' && isUserTurn ? 'Turn' : null,
   ].filter(Boolean)
-  const showSummaryPopup = ['complete', 'game-complete'].includes(gameState.roundStatus) && Boolean(gameState.roundResult)
+  const summaryKey = `${matchId}:${gameState.roundNumber}:${gameState.roundStatus}`
+  const showSummaryPopup =
+    ['complete', 'game-complete'].includes(gameState.roundStatus) &&
+    Boolean(gameState.roundResult) &&
+    dismissedSummaryKey !== summaryKey
+  const isMatchComplete = gameState.roundStatus === 'game-complete'
+  const handWinnerName = gameState.roundResult?.winnerId ? PLAYER_NAMES[gameState.roundResult.winnerId] : 'Nobody'
+  // Only a finished 7-hand match is a completed game; individual hands are interim results.
+  const matchOutcome = isMatchComplete ? (gameState.winnerId === USER_ID ? 'win' : 'loss') : null
+  // Interim hands stay neutral unless the user went out, so a mid-match hand never reads as a defeat.
+  const handOutcome = gameState.roundResult?.winnerId === USER_ID ? 'win' : 'draw'
+  const recordEntry = getRecordEntry(recordBook, GAME_KEY, RECORD_DIFFICULTY)
+
+  useEffect(() => {
+    if (!matchOutcome) {
+      return
+    }
+
+    setRecordBook((currentBook) => {
+      const nextBook = recordOutcome(currentBook, {
+        gameKey: GAME_KEY,
+        difficulty: RECORD_DIFFICULTY,
+        outcome: matchOutcome,
+        completionId: `${GAME_KEY}-${sessionScope}-${matchId}-${matchOutcome}`,
+      })
+
+      if (nextBook !== currentBook) {
+        saveRecordBook(window.localStorage, nextBook)
+      }
+
+      return nextBook
+    })
+  }, [matchOutcome, matchId, sessionScope])
+
+  function handleResetRecord() {
+    setRecordBook((currentBook) => {
+      const nextBook = clearRecordEntry(currentBook, GAME_KEY, RECORD_DIFFICULTY)
+      saveRecordBook(window.localStorage, nextBook)
+      return nextBook
+    })
+  }
 
   return (
     <section className="liverpool-table" aria-label="Liverpool board" data-round-status={gameState.roundStatus}>
@@ -946,7 +982,31 @@ export function LiverpoolGame() {
       </header>
 
       <div className="liverpool-table-surface">
-        {showSummaryPopup ? <RoundSummaryPopup state={gameState} playerNames={PLAYER_NAMES} /> : null}
+        {showSummaryPopup ? (
+          <GameRecordPopup
+            gameName="Liverpool"
+            accent="purple"
+            outcome={isMatchComplete ? matchOutcome : handOutcome}
+            headline={isMatchComplete ? undefined : `Hand ${gameState.roundNumber} Complete`}
+            status={isMatchComplete ? undefined : `${handWinnerName} went out`}
+            message={isMatchComplete ? `${PLAYER_NAMES[gameState.winnerId] ?? 'Nobody'} finished with the lowest score.` : undefined}
+            entry={isMatchComplete ? recordEntry : undefined}
+            footerItems={
+              isMatchComplete
+                ? [{ label: 'Final Score', value: gameState.scores[USER_ID] ?? 0 }]
+                : [
+                    { label: 'Hand', value: `${gameState.roundNumber} of 7` },
+                    { label: 'Your Total', value: gameState.scores[USER_ID] ?? 0 },
+                  ]
+            }
+            onPlayAgain={nextRound}
+            onClose={() => setDismissedSummaryKey(summaryKey)}
+            onResetRecord={isMatchComplete ? handleResetRecord : undefined}
+            playAgainLabel={isMatchComplete ? 'Restart Game' : playMode === 'fullGame' ? 'Next Hand' : 'Replay Hand'}
+          >
+            <RoundScoreTable state={gameState} playerNames={PLAYER_NAMES} />
+          </GameRecordPopup>
+        ) : null}
         <Opponent player={players[1]} side="left" state={gameState} playerIndex={1} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} cutFeedback={cutFeedbackByPlayer[players[1].id]} buyHighlightPlayerId={buyHighlightPlayerId} />
         <section className="liverpool-center" aria-label="Center table actions">
           <div className={`turn-orb${reaction ? ` turn-orb-${reaction.kind}` : ''}`} role="timer" aria-live="polite">{timerLabel}</div>
@@ -1006,7 +1066,7 @@ export function LiverpoolGame() {
           {cutReveal?.bonus < 0 && cutReveal.playerId === USER_ID ? (
             <div className="cut-bonus-flight" aria-hidden="true">-50</div>
           ) : null}
-          <div className="player-hand-arc">
+          <div className="player-hand-arc" onDoubleClick={handleHandAreaDoubleClick}>
             <div className="player-hand-fan" aria-label={`Your hand, ${hand.length} cards`} data-sort-mode={sortMode} onDragOver={handleHandCardDragOver} onDrop={handleHandFanDrop}>
               {hand.map((card, index) => {
                 const cardOffset = index - (hand.length - 1) / 2
@@ -1039,6 +1099,7 @@ export function LiverpoolGame() {
                     onDragOver={handleHandCardDragOver}
                     onDrop={(event) => handleHandCardDrop(event, card.id)}
                     onDragEnd={handleHandCardDragEnd}
+                    onDoubleClick={() => setSelectedCards(hand.map((handCard) => handCard.id))}
                     onClick={() => setSelectedCards((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id])}
                   ><img src={getCardImage(card)} alt="" /></button>
                 )

@@ -4,14 +4,9 @@
 This note captures reusable computer-play patterns for GameNight LiverPool.
 It is for rewrite guidance, not direct copy-paste.
 
-## Research Targets
-- bchase77/liverpoolrummy (JavaScript + server state machine)
-- SCFlanagan/Rummy (JavaScript single-player AI flow)
-
 ## Useful Logic Patterns Found
 
 ### 1) Turn Pipeline For Computer Hands
-Observed in SCFlanagan/Rummy (`Home.jsx`):
 - Decide pickup source.
 - Put down valid melds.
 - Add extras to existing melds.
@@ -21,7 +16,6 @@ Why useful:
 - Matches your requirement for fast computer turns while still being explainable and tunable.
 
 ### 2) Discard Selection Heuristic
-Observed in SCFlanagan/Rummy (`CardFunctions.js`):
 - Score each card by how many neighbors/supports it has for sets/runs.
 - Prefer discarding least-connected cards.
 - Tie-break by lower rank.
@@ -30,7 +24,6 @@ Why useful:
 - Simple baseline that is deterministic and easy to tune by difficulty.
 
 ### 3) Discard Pickup Decision Heuristic
-Observed in SCFlanagan/Rummy (`computerShouldPickFromDiscard`):
 - Take discard if it can be played now.
 - Else test whether it improves near-term meld potential.
 - Reject taking discard if it would likely be discarded immediately.
@@ -39,7 +32,6 @@ Why useful:
 - Prevents noisy/random buying behavior.
 
 ### 4) Buy Arbitration + Priority
-Observed in bchase77/liverpoolrummy (`liverpoolrummy.game.php`):
 - Buying can be blocked when active player takes discard.
 - Buy intent is tracked per player.
 - Buyer resolution uses seat-order priority after active player.
@@ -49,7 +41,6 @@ Why useful:
 - Direct fit for your user-first dibs requirement with additional seat-order fallback.
 
 ### 5) Liverpool/PLAY State Handling
-Observed in bchase77/liverpoolrummy (`liverpoolrummy.game.php`, `liverpoolrummy.js`):
 - Uses explicit state transitions for call handling.
 - Resolves consequences before normal turn continues.
 
@@ -111,12 +102,3 @@ Tune weights per difficulty.
 - Keep AI hidden-information safe: CPU cannot read user future actions.
 - Enforce user-first windows for buy and PLAY before CPU claims.
 - Keep all timing deterministic in tests via injectable clock.
-
-## Source References
-- https://github.com/bchase77/liverpoolrummy
-  - `liverpoolrummy.js`
-  - `liverpoolrummy.game.php`
-  - `gameoptions.json`
-- https://github.com/SCFlanagan/Rummy
-  - `app/components/CardFunctions.js`
-  - `app/components/Home.jsx`

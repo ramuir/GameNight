@@ -132,6 +132,28 @@ export function recordOutcome(book, { gameKey, difficulty, outcome, completionId
   }
 }
 
+/** Clears only the game and difficulty the player is looking at, leaving every other record intact. */
+export function clearRecordEntry(book, gameKey, difficulty) {
+  const currentBook = normalizeRecordBook(book)
+
+  if (!gameKey || !difficulty || !currentBook.games[gameKey]?.[difficulty]) {
+    return currentBook
+  }
+
+  const remainingDifficulties = { ...currentBook.games[gameKey] }
+  delete remainingDifficulties[difficulty]
+
+  const games = { ...currentBook.games }
+
+  if (Object.keys(remainingDifficulties).length > 0) {
+    games[gameKey] = remainingDifficulties
+  } else {
+    delete games[gameKey]
+  }
+
+  return { ...currentBook, games }
+}
+
 export function parseRecordBook(rawValue) {
   if (typeof rawValue !== 'string' || rawValue.length === 0) {
     return createEmptyRecordBook()

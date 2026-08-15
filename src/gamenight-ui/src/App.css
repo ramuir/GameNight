@@ -1,6 +1,5 @@
 /* @import url('https://fonts.googleapis.com/css2?family=Bungee&display=swap'); */
 @import url('https://fonts.googleapis.com/css?family=Warnes&display=swap');
-@import './components/WinBadgeCluster.css';
 
 @keyframes neon-flicker {
   0%, 18%, 22%, 62%, 64%, 100% {

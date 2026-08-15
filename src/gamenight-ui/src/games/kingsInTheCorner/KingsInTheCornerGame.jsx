@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './KingsInTheCornerGame.css'
+import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
+import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
 import {
   attemptPlayerMove,
   attemptPlayerPileMove,
@@ -11,10 +13,11 @@ import {
   getPlayerEndTurnError,
   runComputerTurn,
   shuffleKingsInTheCorner,
-  getPlayerRoundWinDelta,
   updateDifficulty,
   updatePlayStyle,
 } from './kingsInTheCornerLogic.js'
+
+const GAME_KEY = 'kingsInTheCorner'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', {
   eager: true,
@@ -149,7 +152,9 @@ export function KingsInTheCornerGame() {
   const [selectedSourcePile, setSelectedSourcePile] = useState(null)
   const [illegalMoveShake, setIllegalMoveShake] = useState(false)
   const [isEndPopupVisible, setIsEndPopupVisible] = useState(false)
-  const [playerWins, setPlayerWins] = useState(0)
+  const [recordBook, setRecordBook] = useState(() => loadRecordBook(window.localStorage))
+  const [roundId, setRoundId] = useState(1)
+  const [sessionScope] = useState(createSessionScopeId)
   const [isPlayerHandOverflowing, setIsPlayerHandOverflowing] = useState(false)
   const [isComputerHandOverflowing, setIsComputerHandOverflowing] = useState(false)
   const playerHandRowRef = useRef(null)
@@ -171,24 +176,38 @@ export function KingsInTheCornerGame() {
     : activeCard
       ? getLegalTargetKeys(activeCard, gameState.piles)
       : []
-  const winnerMessage =
-    gameState.winner === 'player'
-      ? 'You Win!'
-      : gameState.winner === 'computer'
-        ? 'You Lose'
-        : gameState.winner === 'draw'
-          ? 'Draw Game'
-          : 'Round Complete'
-  const winCount = playerWins
+  const roundOutcome =
+    gameState.winner === 'player' ? 'win' : gameState.winner === 'computer' ? 'loss' : gameState.winner === 'draw' ? 'draw' : null
+  const recordEntry = getRecordEntry(recordBook, GAME_KEY, gameState.difficulty)
 
   useEffect(() => {
-    const winDelta = getPlayerRoundWinDelta(gameState)
-    if (winDelta === 0) {
+    if (gameState.phase !== 'finished' || !roundOutcome) {
       return
     }
 
-    setPlayerWins((currentWins) => currentWins + winDelta)
-  }, [gameState.phase, gameState.winner])
+    setRecordBook((currentBook) => {
+      const nextBook = recordOutcome(currentBook, {
+        gameKey: GAME_KEY,
+        difficulty: gameState.difficulty,
+        outcome: roundOutcome,
+        completionId: `${GAME_KEY}-${sessionScope}-${roundId}-${gameState.difficulty}-${roundOutcome}`,
+      })
+
+      if (nextBook !== currentBook) {
+        saveRecordBook(window.localStorage, nextBook)
+      }
+
+      return nextBook
+    })
+  }, [gameState.phase, gameState.difficulty, roundOutcome, roundId, sessionScope])
+
+  function handleResetRecord() {
+    setRecordBook((currentBook) => {
+      const nextBook = clearRecordEntry(currentBook, GAME_KEY, gameState.difficulty)
+      saveRecordBook(window.localStorage, nextBook)
+      return nextBook
+    })
+  }
 
   useEffect(() => {
     if (previewMode !== 'dealt') {
@@ -206,22 +225,6 @@ export function KingsInTheCornerGame() {
 
     setIsEndPopupVisible(false)
   }, [gameState.phase])
-
-  useEffect(() => {
-    if (!isEndPopupVisible) {
-      return undefined
-    }
-
-    function handleDismissOnKey() {
-      setIsEndPopupVisible(false)
-    }
-
-    window.addEventListener('keydown', handleDismissOnKey)
-
-    return () => {
-      window.removeEventListener('keydown', handleDismissOnKey)
-    }
-  }, [isEndPopupVisible])
 
   useEffect(() => {
     function measureHandOverflow() {
@@ -295,6 +298,7 @@ export function KingsInTheCornerGame() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
+    setRoundId((current) => current + 1)
     setGameState((current) => dealKingsInTheCorner(current))
   }
 
@@ -450,6 +454,11 @@ export function KingsInTheCornerGame() {
 
   function dismissEndPopup() {
     setIsEndPopupVisible(false)
+  }
+
+  function handlePlayAgain() {
+    setIsEndPopupVisible(false)
+    handleDeal()
   }
 
   return (
@@ -646,22 +655,21 @@ export function KingsInTheCornerGame() {
         </div>
       </section>
 
-      {isEndPopupVisible && (
-        <div className="end-popup-backdrop" role="status" aria-live="polite" onClick={dismissEndPopup}>
-          <div className="end-popup-card" onClick={dismissEndPopup} role="button" tabIndex={0} onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              dismissEndPopup()
-            }
-          }}>
-            <h3>{winnerMessage}</h3>
-            <p>{gameState.status}</p>
-            <p className="end-popup-hint">Click to close</p>
-          </div>
-        </div>
+      {isEndPopupVisible && roundOutcome && (
+        <GameRecordPopup
+          gameName="Kings in the Corner"
+          accent="cyan"
+          outcome={roundOutcome}
+          message={gameState.status}
+          footerItems={[{ label: 'Difficulty', value: gameState.difficulty }]}
+          entry={recordEntry}
+          onPlayAgain={handlePlayAgain}
+          onClose={dismissEndPopup}
+          onResetRecord={handleResetRecord}
+          playAgainLabel="Deal Again"
+        />
       )}
       </section>
-      <span className="game-shell-badge" aria-label={`${winCount} win${winCount === 1 ? '' : 's'}`}>{winCount}</span>
     </div>
   )
 }

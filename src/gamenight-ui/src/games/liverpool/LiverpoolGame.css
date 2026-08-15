@@ -82,47 +82,11 @@
   overflow: hidden;
 }
 
-.liverpool-round-summary {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 25;
-  width: min(560px, calc(100% - 24px));
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(48, 229, 255, 0.36);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, rgba(3, 10, 18, 0.94), rgba(7, 18, 31, 0.95));
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.44), inset 0 0 0 1px rgba(48, 229, 255, 0.1);
-  pointer-events: none;
-}
-
-.liverpool-round-summary-header {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 8px;
-  color: var(--paper-100);
-}
-
-.liverpool-round-summary-header strong {
-  color: var(--cyan-400);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.liverpool-round-summary-header span {
-  color: var(--paper-200);
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .liverpool-round-summary-table {
   width: 100%;
   border-collapse: collapse;
   color: var(--paper-100);
-  font-size: 0.56rem;
+  font-size: 0.68rem;
 }
 
 .liverpool-round-summary-table th,
@@ -960,10 +924,6 @@ button.meld-fan:hover .meld-fan-cards,
   .liverpool-notice { min-height: 0; }
   .liverpool-table-actions { grid-template-columns: 1fr; }
   .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
-  .liverpool-round-summary {
-    width: min(520px, calc(100% - 16px));
-    padding: 8px 10px;
-  }
 }
 
 @media (max-width: 600px) {
@@ -982,12 +942,7 @@ button.meld-fan:hover .meld-fan-cards,
   .liverpool-table-actions { grid-template-columns: 1fr; }
   .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
   .table-action { min-height: 44px; }
-  .liverpool-round-summary {
-    width: calc(100% - 12px);
-    border-radius: 11px;
-    padding: 7px 8px;
-  }
   .liverpool-round-summary-table {
-    font-size: 0.52rem;
+    font-size: 0.6rem;
   }
 }

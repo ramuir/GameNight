@@ -63,24 +63,6 @@
   text-transform: uppercase;
 }
 
-.game-shell-badge {
-  position: absolute;
-  top: 0.7rem;
-  right: 0.2rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 999px;
-  background: rgba(6, 12, 24, 0.96);
-  border: 1px solid rgba(255, 79, 149, 0.42);
-  color: #ff8fc0;
-  font-size: 0.72rem;
-  font-weight: 800;
-  box-shadow: 0 0 16px rgba(255, 79, 149, 0.14);
-}
-
 .status-pill-button {
   appearance: none;
   cursor: pointer;

@@ -4,7 +4,7 @@ const CENTER_ORDER = [3, 2, 4, 1, 5, 0, 6]
 const DIFFICULTY_DEPTH = {
   easy: 1,
   medium: 1,
-  hard: 7,
+  hard: 5,
 }
 
 function getOpponent(player) {
@@ -246,7 +246,7 @@ export function chooseConnectFourMove(state, difficulty = 'medium') {
   }
 
   const orderedColumns = orderColumns(legalColumns)
-  const useSafeMoveFilter = difficulty === 'hard'
+  const useSafeMoveFilter = difficulty === 'medium' || difficulty === 'hard'
   const safeColumns = useSafeMoveFilter
     ? orderedColumns.filter((column) => !allowsImmediateOpponentWin(state, aiPlayer, column))
     : orderedColumns

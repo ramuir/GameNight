@@ -88,8 +88,6 @@ function App() {
   const activeGame = games[selectedGame]
   const isGameActive = launchableGameKeys.includes(selectedGame)
   const activeGameTitle = selectedGame === 'none' ? 'Choose a game' : activeGame.title
-  const homeChoiceKey = playableGameKeys[homeChoiceIndex] ?? playableGameKeys[0]
-  const homeChoice = games[homeChoiceKey]
 
   useEffect(() => {
     if (!isGameActive) {
