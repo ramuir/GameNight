@@ -92,7 +92,6 @@ function PileSlot({
         onDropCard()
       }}
     >
-      <span className="pile-title">{title}</span>
       {cards.length > 0 ? (
         <div className={`pile-preview${hasStack ? ' pile-preview-stacked' : ''}`}>
           {baseCard && (
@@ -565,9 +564,7 @@ export function KingsInTheCornerGame() {
             isSourceSelected={selectedSourcePile?.area === 'tableau' && selectedSourcePile?.key === 'left'}
           />
           <div className="deck-card">
-            <span className="pile-title">Draw Pile</span>
             <CardBack className="playing-card-back-deck" />
-            <span className="deck-count">{gameState.deck.length} cards</span>
           </div>
 
           <PileSlot
