@@ -1,5 +1,5 @@
 import './ConnectFourGame.css'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
 import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
@@ -36,6 +36,17 @@ function createEmptyBoardSlots() {
     id: `slot-${index}`,
     state: 'empty',
   }))
+}
+
+function createSlotsFromBoard(board) {
+  return Array.from({ length: BOARD_ROWS * BOARD_COLUMNS }, (_, index) => {
+    const row = Math.floor(index / BOARD_COLUMNS)
+    const column = index % BOARD_COLUMNS
+    return {
+      id: `slot-${index}`,
+      state: board[row][column],
+    }
+  })
 }
 
 function getColumnAvailabilityForBoard(board, column) {
@@ -75,17 +86,18 @@ export function ConnectFourGame() {
   const roundOutcome = gameState.winner === 'red' ? 'win' : gameState.winner === 'green' ? 'loss' : gameState.isDraw ? 'draw' : null
   const recordEntry = getRecordEntry(recordBook, GAME_KEY, difficulty)
 
-  useEffect(() => {
-    if (!roundOutcome) {
-      return undefined
+  const persistRoundOutcome = useCallback((nextState, nextDifficulty = difficulty) => {
+    const nextOutcome = nextState.winner === 'red' ? 'win' : nextState.winner === 'green' ? 'loss' : nextState.isDraw ? 'draw' : null
+    if (!nextOutcome) {
+      return
     }
 
     setRecordBook((currentBook) => {
       const nextBook = recordOutcome(currentBook, {
         gameKey: GAME_KEY,
-        difficulty,
-        outcome: roundOutcome,
-        completionId: `${GAME_KEY}-${sessionScope}-${roundId}-${difficulty}-${roundOutcome}`,
+        difficulty: nextDifficulty,
+        outcome: nextOutcome,
+        completionId: `${GAME_KEY}-${sessionScope}-${roundId}-${nextDifficulty}-${nextOutcome}`,
       })
 
       if (nextBook !== currentBook) {
@@ -94,12 +106,18 @@ export function ConnectFourGame() {
 
       return nextBook
     })
+  }, [difficulty, roundId, sessionScope])
+
+  useEffect(() => {
+    if (!roundOutcome) {
+      return undefined
+    }
 
     // Let the winning line glow read before the result covers the board.
     const revealTimer = window.setTimeout(() => setIsResultPopupVisible(true), RESULT_REVEAL_DELAY_MS)
 
     return () => window.clearTimeout(revealTimer)
-  }, [roundOutcome, difficulty, roundId, sessionScope])
+  }, [roundOutcome])
 
   function handleResetRecord() {
     setRecordBook((currentBook) => {
@@ -108,23 +126,6 @@ export function ConnectFourGame() {
       return nextBook
     })
   }
-
-  useEffect(() => {
-    if (undoAnimation) {
-      return undefined
-    }
-
-    const nextSlots = Array.from({ length: BOARD_ROWS * BOARD_COLUMNS }, (_, index) => {
-      const row = Math.floor(index / BOARD_COLUMNS)
-      const column = index % BOARD_COLUMNS
-      return {
-        id: `slot-${index}`,
-        state: gameState.board[row][column],
-      }
-    })
-
-    setSlots(nextSlots)
-  }, [gameState.board, undoAnimation])
 
   useEffect(() => {
     if (!dropAnimation && !undoAnimation) {
@@ -151,7 +152,10 @@ export function ConnectFourGame() {
           return
         }
 
-        setGameState((previousState) => applyMove(previousState, dropAnimation.column))
+        const nextState = applyMove(gameState, dropAnimation.column)
+        setGameState(nextState)
+        setSlots(createSlotsFromBoard(nextState.board))
+        persistRoundOutcome(nextState)
         setLandedSlotId(`slot-${targetIndex}`)
         setDropAnimation(null)
         setDropProgress(0)
@@ -210,7 +214,9 @@ export function ConnectFourGame() {
         }
         setUndoAnimation(nextUndoAnimation)
       } else {
-        setGameState((previousState) => undoLastUserTurn(previousState))
+        const nextState = undoLastUserTurn(gameState)
+        setGameState(nextState)
+        setSlots(createSlotsFromBoard(nextState.board))
         setUndoAnimation(null)
       }
       setDropProgress(0)
@@ -219,7 +225,7 @@ export function ConnectFourGame() {
     animationFrame = window.requestAnimationFrame(tick)
 
     return () => window.cancelAnimationFrame(animationFrame)
-  }, [dropAnimation, undoAnimation])
+  }, [dropAnimation, undoAnimation, gameState, persistRoundOutcome, undoQueue])
 
   useEffect(() => {
     if (gameState.winner || gameState.isDraw || gameState.activePlayer !== 'green' || isAnimating || isComputerThinking) {
@@ -261,7 +267,7 @@ export function ConnectFourGame() {
     }, 680)
 
     return () => window.clearTimeout(aiTimer)
-  }, [difficulty, gameState.activePlayer, gameState.board, gameState.isDraw, gameState.moveCount, gameState.winner, isAnimating, isComputerThinking])
+  }, [difficulty, gameState, isAnimating, isComputerThinking])
 
   useEffect(() => {
     if (!landedSlotId) {
@@ -427,7 +433,9 @@ export function ConnectFourGame() {
       return
     }
 
-    setGameState(createInitialConnectFourState())
+    const nextState = createInitialConnectFourState()
+    setGameState(nextState)
+    setSlots(createSlotsFromBoard(nextState.board))
     setDropAnimation(null)
     setUndoAnimation(null)
     setUndoQueue([])

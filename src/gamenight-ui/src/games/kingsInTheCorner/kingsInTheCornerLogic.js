@@ -489,10 +489,6 @@ function finishIfDraw(state) {
   return state
 }
 
-export function getPlayerRoundWinDelta(state) {
-  return state.phase === 'finished' && state.winner === 'player' ? 1 : 0
-}
-
 function applyHandMove(state, actor, cardId, targetArea, targetKey) {
   const handKey = actor === 'player' ? 'playerHand' : 'computerHand'
   const hand = state[handKey]

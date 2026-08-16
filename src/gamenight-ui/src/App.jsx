@@ -90,17 +90,6 @@ function App() {
   const activeGameTitle = selectedGame === 'none' ? 'Choose a game' : activeGame.title
 
   useEffect(() => {
-    if (!isGameActive) {
-      return
-    }
-
-    const activeIndex = playableGameKeys.findIndex((gameKey) => gameKey === selectedGame)
-    if (activeIndex >= 0) {
-      setHomeChoiceIndex(activeIndex)
-    }
-  }, [isGameActive, playableGameKeys, selectedGame])
-
-  useEffect(() => {
     if (!isGameDropdownOpen) {
       return undefined
     }
@@ -162,6 +151,10 @@ function App() {
               isOpen={isGameDropdownOpen}
               onToggle={() => setIsGameDropdownOpen((current) => !current)}
               onSelect={(nextGame) => {
+                const nextIndex = playableGameKeys.findIndex((gameKey) => gameKey === nextGame)
+                if (nextIndex >= 0) {
+                  setHomeChoiceIndex(nextIndex)
+                }
                 setSelectedGame(nextGame)
                 setIsGameDropdownOpen(false)
               }}

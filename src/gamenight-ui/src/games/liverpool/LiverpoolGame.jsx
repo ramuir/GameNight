@@ -1,22 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './LiverpoolGame.css'
 import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
 import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
 import { chooseLiverpoolCpuAction, findLiverpoolInitialContract, shouldBuyDiscard } from './liverpoolCpu.js'
+import { createDevFixtureState } from './liverpoolDevFixtures.js'
+import { haveSameOrder, normalizeHandOrder, reorderHandOrder, resolveHandOrder, sortHandCards } from './liverpoolHandOrder.js'
 import {
   ROUND_CONTRACTS,
   advanceRound,
   createPendingRoundState,
-  createRoundState,
   dealPendingRound,
   discardCard,
   drawFromStock,
   layOff,
   meldInitialContract,
+  possiblePlayTargets,
+  selectedContract,
   preparePendingDeal,
   takeTopDiscard,
-  validateContract,
-  validateMeld,
 } from './liverpoolLogic.js'
 import { chooseCpuCutCount, getPerfectCutTargets, resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
 
@@ -26,7 +27,6 @@ const RECORD_DIFFICULTY = 'standard'
 const USER_ID = 'player'
 const PLAYER_IDS = [USER_ID, 'cpu-1', 'cpu-2']
 const PLAYER_NAMES = { player: 'You', 'cpu-1': 'CPU 1', 'cpu-2': 'CPU 2' }
-const RANK_ORDER = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'JOKER']
 const BUY_HIGHLIGHT_MS = 2000
 
 function seededRandom(seedText = '0044') {
@@ -67,165 +67,9 @@ function queryOptions() {
 
 function createInitialState(roundNumber = 1, dealerIndex = 1, scores) {
   const { fixture, dealerIndex: queryDealerIndex } = queryOptions()
-  if (import.meta.env.DEV && fixture === 'cut-preview' && roundNumber === 1 && !scores) {
-    const pending = createPendingRoundState({ roundNumber: 5, playerIds: PLAYER_IDS, dealerIndex: 1 })
-    return preparePendingDeal(pending, seededRandom('0046-cut-preview'))
-  }
-  if (import.meta.env.DEV && fixture === 'round-complete' && roundNumber === 1 && !scores) {
-    const state = createPendingRoundState({
-      roundNumber: 1,
-      playerIds: PLAYER_IDS,
-      dealerIndex: 2,
-      scores: { player: 25, 'cpu-1': 40, 'cpu-2': 55 },
-    })
-    state.roundStatus = 'complete'
-    state.phase = 'complete'
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'round-five-pending' && roundNumber === 1 && !scores) {
-    return createPendingRoundState({ roundNumber: 5, playerIds: PLAYER_IDS, dealerIndex: 1 })
-  }
-  if (import.meta.env.DEV && fixture === 'game-complete' && roundNumber === 1 && !scores) {
-    const state = createRoundState({
-      roundNumber: 7,
-      playerIds: PLAYER_IDS,
-      dealerIndex: 2,
-      scores: { player: 75, 'cpu-1': 120, 'cpu-2': 180 },
-      rng: seededRandom('0044'),
-    })
-    state.roundStatus = 'game-complete'
-    state.phase = 'complete'
-    state.winnerId = USER_ID
-    return state
-  }
-  if (import.meta.env.DEV && ['play-after-cpu1', 'play-after-cpu2'].includes(fixture) && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0048') })
-    const discarderIndex = fixture === 'play-after-cpu1' ? 1 : 2
-    const meldOwnerIndex = discarderIndex === 1 ? 2 : 1
-    state.activePlayerIndex = discarderIndex
-    state.phase = 'action'
-    state.players[0].hand = [card('fixture-user-replacement', 'K', 'clubs'), card('fixture-user-kept', '9', 'hearts')]
-    state.players[1].hand = [card('fixture-cpu1-a', '6', 'clubs'), card('fixture-cpu1-b', '7', 'diamonds')]
-    state.players[2].hand = [card('fixture-cpu2-a', '6', 'hearts'), card('fixture-cpu2-b', '7', 'spades')]
-    state.players[discarderIndex].hand = [
-      card(`fixture-${fixture}-play`, '4', 'spades'),
-      { id: `fixture-${fixture}-joker`, rank: 'JOKER', suit: null, isJoker: true },
-    ]
-    state.players[discarderIndex].hasOpened = false
-    state.players[meldOwnerIndex].hasOpened = true
-    state.players[meldOwnerIndex].melds = [{ type: 'group', cards: [
-      card('fixture-meld-4c', '4', 'clubs'),
-      card('fixture-meld-4d', '4', 'diamonds'),
-      card('fixture-meld-4h', '4', 'hearts'),
-    ] }]
-    state.players[0].hasOpened = true
-    state.players[0].melds = [{ type: 'group', cards: [
-      card('fixture-user-open-9c', '9', 'clubs'),
-      card('fixture-user-open-9d', '9', 'diamonds'),
-      card('fixture-user-open-9h', '9', 'hearts'),
-    ] }]
-    state.stock = [card('fixture-stock-a', '8', 'clubs'), card('fixture-stock-b', '10', 'diamonds')]
-    state.discardPile = [{ card: card('fixture-prior-discard', 'Q', 'hearts'), discardedBy: USER_ID, frozen: true }]
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'round-seven-pat-hand' && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 7, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('round-seven-pat') })
-    state.activePlayerIndex = 0
-    state.startPlayerIndex = 0
-    state.phase = 'action'
-    state.players[0].hand = [
-      card('fixture-run-hearts-2', '2', 'hearts'), card('fixture-run-hearts-3', '3', 'hearts'),
-      card('fixture-run-hearts-4', '4', 'hearts'), card('fixture-run-hearts-5', '5', 'hearts'),
-      card('fixture-run-clubs-6', '6', 'clubs'), card('fixture-run-clubs-7', '7', 'clubs'),
-      card('fixture-run-clubs-8', '8', 'clubs'), card('fixture-run-clubs-9', '9', 'clubs'),
-      card('fixture-run-spades-10', '10', 'spades'), card('fixture-run-spades-j', 'J', 'spades'),
-      card('fixture-run-spades-q', 'Q', 'spades'), card('fixture-run-spades-k', 'K', 'spades'),
-    ]
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'near-round-end' && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit = 'hearts') => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0044') })
-    state.activePlayerIndex = 0
-    state.startPlayerIndex = 0
-    state.players[0].hand = [
-      card('fixture-5c', '5', 'clubs'), card('fixture-5d', '5', 'diamonds'), card('fixture-5h', '5', 'hearts'),
-      card('fixture-9c', '9', 'clubs'), card('fixture-9d', '9', 'diamonds'), card('fixture-9h', '9', 'hearts'),
-      card('fixture-play', '9', 'spades'),
-      card('fixture-discard', 'K', 'spades'),
-    ]
-    state.players[1].hand = [card('fixture-cpu1-a', '2'), card('fixture-cpu1-b', '3')]
-    state.players[2].hand = [card('fixture-cpu2-a', '4'), card('fixture-cpu2-b', '6')]
-    state.stock = [card('fixture-stock', '5', 'spades')]
-    state.discardPile = [{ card: card('fixture-top', 'Q', 'clubs'), discardedBy: 'cpu-2', frozen: true }]
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'buy-after-cpu1' && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit = 'hearts') => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0044') })
-    state.activePlayerIndex = 2
-    state.phase = 'draw'
-    state.players[0].hand = [card('fixture-user-buy', 'K', 'clubs')]
-    state.players[1].hand = [card('fixture-cpu1-buy', '2', 'clubs')]
-    state.players[2].hand = [card('fixture-cpu2-buy', '3', 'diamonds')]
-    state.stock = [card('fixture-buy-stock-1', '4', 'spades'), card('fixture-buy-stock-2', '6', 'clubs')]
-    state.discardPile = [{ card: card('fixture-buy-top', 'K', 'diamonds'), discardedBy: 'cpu-1', frozen: false }]
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'user-discard-cpu-buy' && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit = 'hearts') => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0044') })
-    state.activePlayerIndex = 0
-    state.phase = 'action'
-    state.players[0].hand = [card('fixture-user-discard', 'K', 'spades'), card('fixture-user-keep', '2', 'hearts')]
-    state.players[1].hand = [card('fixture-cpu1-hand', '3', 'clubs')]
-    state.players[2].hand = [card('fixture-cpu2-king-c', 'K', 'clubs'), card('fixture-cpu2-king-d', 'K', 'diamonds')]
-    state.stock = [card('fixture-stock-1', '5', 'clubs'), card('fixture-stock-2', '6', 'diamonds'), card('fixture-stock-3', '7', 'spades')]
-    state.discardPile = [{ card: card('fixture-prior-discard', '8', 'clubs'), discardedBy: 'cpu-2', frozen: true }]
-    return state
-  }
-  if (import.meta.env.DEV && ['sort-stock', 'sort-discard', 'sort-buy-after-cpu1'].includes(fixture) && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0051') })
-    state.players[0].hand = [
-      card('fixture-sort-q-spades', 'Q', 'spades'),
-      card('fixture-sort-8h', '8', 'hearts'),
-      card('fixture-sort-k-diamonds', 'K', 'diamonds'),
-      card('fixture-sort-3-hearts', '3', 'hearts'),
-    ]
-    state.phase = 'draw'
-    if (fixture === 'sort-stock') {
-      state.activePlayerIndex = 0
-      state.stock = [card('fixture-gain-a-clubs', 'A', 'clubs')]
-      state.discardPile = [{ card: card('fixture-frozen-discard', '6', 'diamonds'), discardedBy: 'cpu-2', frozen: true }]
-    } else if (fixture === 'sort-discard') {
-      state.activePlayerIndex = 0
-      state.stock = [card('fixture-stock-spare', '10', 'clubs')]
-      state.discardPile = [{ card: card('fixture-gain-5-clubs', '5', 'clubs'), discardedBy: 'cpu-2', frozen: false }]
-    } else {
-      state.activePlayerIndex = 2
-      state.players[1].hand = [card('fixture-cpu1-sort', '2', 'clubs')]
-      state.players[2].hand = [card('fixture-cpu2-sort', '3', 'diamonds')]
-      state.stock = [card('fixture-cpu-draw', '10', 'spades'), card('fixture-gain-a-clubs', 'A', 'clubs')]
-      state.discardPile = [{ card: card('fixture-gain-k-clubs', 'K', 'clubs'), discardedBy: 'cpu-1', frozen: false }]
-    }
-    return state
-  }
-  if (import.meta.env.DEV && fixture === 'layoff-opponent' && roundNumber === 1 && !scores) {
-    const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
-    const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0044') })
-    state.activePlayerIndex = 0
-    state.phase = 'action'
-    state.players[0].hasOpened = true
-    state.players[0].hand = [card('fixture-layoff', '5', 'spades'), card('fixture-keep', 'K', 'clubs')]
-    state.players[0].melds = []
-    state.players[1].hasOpened = true
-    state.players[1].melds = [{ type: 'group', cards: [
-      card('fixture-5c', '5', 'clubs'), card('fixture-5d', '5', 'diamonds'), card('fixture-5h', '5', 'hearts'),
-    ] }]
-    return state
+  if (import.meta.env.DEV) {
+    const fixtureState = createDevFixtureState({ fixture, roundNumber, scores })
+    if (fixtureState) return fixtureState
   }
   return createPendingRoundState({
     roundNumber,
@@ -251,43 +95,6 @@ function cardLabel(card) {
   return `${names[card.rank] ?? card.rank} of ${card.suit}`
 }
 
-function partitionContract(cards, contract, roundNumber) {
-  function search(remaining, contractIndex, melds) {
-    if (contractIndex === contract.length) {
-      if (remaining.length > 0) return null
-      return validateContract(roundNumber, melds).valid ? melds : null
-    }
-    const type = contract[contractIndex]
-    const minimum = type === 'group' ? 3 : 4
-    const limit = 2 ** remaining.length
-    for (let mask = 1; mask < limit; mask += 1) {
-      const selected = remaining.filter((_, index) => mask & (1 << index))
-      if (selected.length < minimum) continue
-      const rest = remaining.filter((_, index) => !(mask & (1 << index)))
-      const found = search(rest, contractIndex + 1, [...melds, { type, cards: selected }])
-      if (found) return found
-    }
-    return null
-  }
-  return search(cards, 0, [])
-}
-
-function selectedContract(state, selectedIds) {
-  const user = state.players.find((player) => player.id === USER_ID)
-  if (!user || user.hasOpened || selectedIds.length === 0) return null
-  if (state.roundNumber === 7 && selectedIds.length !== user.hand.length) return null
-  const cards = selectedIds.map((id) => user.hand.find((card) => card.id === id)).filter(Boolean)
-  if (state.roundNumber === 7) {
-    return findLiverpoolInitialContract(state.roundNumber, cards, { requireResidualForNonRoundSeven: false })
-  }
-  const contract = ROUND_CONTRACTS[state.roundNumber]
-  for (const types of [contract, [...contract].reverse()]) {
-    const melds = partitionContract(cards, types, state.roundNumber)
-    if (melds) return melds.map((meld) => ({ type: meld.type, cardIds: meld.cards.map((card) => card.id) }))
-  }
-  return null
-}
-
 function applyCpuAction(state, playerId, action, rng) {
   if (action.type === 'draw-stock') return drawFromStock(state, playerId, rng)
   if (action.type === 'take-discard') return takeTopDiscard(state, playerId)
@@ -310,20 +117,6 @@ function resolveCpuBuysThenDraw(state, playerId, rng) {
     ? drawFromStock(result.state, playerId, rng)
     : result.state
   return { result, next }
-}
-
-function possiblePlayTargets(state) {
-  const topDiscard = state.discardPile.at(-1)
-  if (state.roundStatus !== 'active' || !topDiscard || topDiscard.frozen) return []
-  const targets = []
-  for (const owner of state.players) {
-    owner.melds.forEach((meld, meldIndex) => {
-      if (validateMeld([...meld.cards, topDiscard.card], meld.type).valid) {
-        targets.push({ ownerId: owner.id, meldIndex })
-      }
-    })
-  }
-  return targets
 }
 
 function MeldFan({ title, cards = [], tone = 'cyan', isSelected = false, onSelect }) {
@@ -407,33 +200,6 @@ function RoundScoreTable({ state, playerNames }) {
   )
 }
 
-function sortHandCards(cards, sortMode) {
-  return [...cards].sort((left, right) => {
-    if (sortMode === 'suit') return (left.suit ?? 'zz').localeCompare(right.suit ?? 'zz') || RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank)
-    return RANK_ORDER.indexOf(left.rank) - RANK_ORDER.indexOf(right.rank) || (left.suit ?? '').localeCompare(right.suit ?? '')
-  })
-}
-
-function normalizeHandOrder(sortedIds, customIds) {
-  const available = new Set(sortedIds)
-  const retained = customIds.filter((id) => available.has(id))
-  const retainedSet = new Set(retained)
-  return [...retained, ...sortedIds.filter((id) => !retainedSet.has(id))]
-}
-
-function reorderHandOrder(currentIds, draggedId, targetId, insertAfter) {
-  if (!draggedId || !targetId || draggedId === targetId) return currentIds
-  const nextIds = currentIds.filter((id) => id !== draggedId)
-  const targetIndex = nextIds.indexOf(targetId)
-  if (targetIndex === -1) return currentIds
-  nextIds.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedId)
-  return nextIds
-}
-
-function haveSameOrder(left, right) {
-  return left.length === right.length && left.every((value, index) => value === right[index])
-}
-
 function Opponent({ player, side, state, playerIndex, selectedMeld, onSelectMeld, canSelectMeld, cutFeedback, buyHighlightPlayerId }) {
   const isDealt = state.roundStatus !== 'pending' && state.roundStatus !== 'cutting'
   const isTurn = state.roundStatus === 'active' && state.activePlayerIndex === playerIndex
@@ -510,7 +276,7 @@ export function LiverpoolGame() {
   const canSelectMeld = !reaction || playClaimed
   const sortedHand = sortHandCards(user.hand, sortMode)
   const sortedHandIds = sortedHand.map((card) => card.id)
-  const resolvedHandOrder = normalizeHandOrder(sortedHandIds, handOrder)
+  const resolvedHandOrder = resolveHandOrder(sortedHandIds, handOrder)
   const handCardsById = new Map(sortedHand.map((card) => [card.id, card]))
   const hand = resolvedHandOrder.map((cardId) => handCardsById.get(cardId)).filter(Boolean)
   const isCutPreviewFixture = import.meta.env.DEV && queryOptions().fixture === 'cut-preview'
@@ -531,16 +297,16 @@ export function LiverpoolGame() {
     if (cutRevealTimerRef.current) window.clearTimeout(cutRevealTimerRef.current)
   }), [])
 
-  useEffect(() => {
-    setHandOrder((current) => {
-      const next = normalizeHandOrder(sortedHandIds, current)
-      return haveSameOrder(current, next) ? current : next
-    })
-  }, [sortedHandIds.join('|')])
-
-  function updateState(nextState, nextNotice, { openPlayWindow = false, preserveSelection = false } = {}) {
+  const updateState = useCallback((nextState, nextNotice, { openPlayWindow = false, preserveSelection = false } = {}) => {
     if (nextState.roundStatus === 'pending' || nextState.roundStatus === 'cutting') {
       setHandOrder([])
+    } else {
+      setHandOrder((current) => {
+        const nextUser = nextState.players.find((player) => player.id === USER_ID)
+        const nextSortedIds = sortHandCards(nextUser?.hand ?? [], sortMode).map((card) => card.id)
+        const next = resolveHandOrder(nextSortedIds, current)
+        return haveSameOrder(current, next) ? current : next
+      })
     }
     setGameState(nextState)
     if (!preserveSelection) {
@@ -548,6 +314,25 @@ export function LiverpoolGame() {
       setSelectedMeld(null)
     }
     if (nextNotice) setNotice(nextNotice)
+    const nextMatchOutcome = nextState.roundStatus === 'game-complete'
+      ? (nextState.winnerId === USER_ID ? 'win' : 'loss')
+      : null
+    if (nextMatchOutcome) {
+      setRecordBook((currentBook) => {
+        const nextBook = recordOutcome(currentBook, {
+          gameKey: GAME_KEY,
+          difficulty: RECORD_DIFFICULTY,
+          outcome: nextMatchOutcome,
+          completionId: `${GAME_KEY}-${sessionScope}-${matchId}-${nextMatchOutcome}`,
+        })
+
+        if (nextBook !== currentBook) {
+          saveRecordBook(window.localStorage, nextBook)
+        }
+
+        return nextBook
+      })
+    }
     const playIsLegal = openPlayWindow
       && nextState.roundStatus === 'active'
       && !nextState.discardPile.at(-1)?.frozen
@@ -557,7 +342,7 @@ export function LiverpoolGame() {
       setReaction({ kind: 'play', stage: 'window', seconds: 5 })
       setNotice('PLAY available. Claim within 5 seconds; no card or meld selection is needed yet.')
     }
-  }
+  }, [matchId, sessionScope, sortMode])
 
   function attempt(action, successNotice, options) {
     try {
@@ -611,21 +396,15 @@ export function LiverpoolGame() {
         }
         if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
         setReaction(null)
-        setGameState(next)
-        setSelectedCards([])
-        setSelectedMeld(null)
-        setNotice(result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard.` : 'Buy window closed.')
+        updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard.` : 'Buy window closed.')
         return
       }
       const result = resolvePlay(gameState, cpuPlayClaims(gameState))
       setReaction(null)
-      setGameState(result.state)
-      setSelectedCards([])
-      setSelectedMeld(null)
-      setNotice(result.resolved ? `${PLAYER_NAMES[result.playerId]} called PLAY.` : 'PLAY window closed.')
+      updateState(result.state, result.resolved ? `${PLAYER_NAMES[result.playerId]} called PLAY.` : 'PLAY window closed.')
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [gameState, reaction])
+  }, [gameState, reaction, updateState])
 
   useEffect(() => {
     if (reaction || gameState.roundStatus !== 'active' || isUserTurn) return undefined
@@ -655,7 +434,7 @@ export function LiverpoolGame() {
       }
     }, 350)
     return () => window.clearTimeout(timer)
-  }, [activePlayer?.id, gameState, isUserTurn, reaction, topDiscard?.discardedBy, topDiscard?.frozen])
+  }, [activePlayer?.id, gameState, isUserTurn, reaction, topDiscard?.discardedBy, topDiscard?.frozen, updateState])
 
   useEffect(() => {
     if (gameState.roundStatus !== 'cutting' || cutReveal) return undefined
@@ -823,7 +602,7 @@ export function LiverpoolGame() {
   }
 
   function handleMeld() {
-    const contract = selectedContract(gameState, selectedCards)
+    const contract = selectedContract(gameState, selectedCards, findLiverpoolInitialContract)
     if (!contract) {
       setNotice('Selected cards do not form this hand contract.')
       return
@@ -932,27 +711,6 @@ export function LiverpoolGame() {
   // Interim hands stay neutral unless the user went out, so a mid-match hand never reads as a defeat.
   const handOutcome = gameState.roundResult?.winnerId === USER_ID ? 'win' : 'draw'
   const recordEntry = getRecordEntry(recordBook, GAME_KEY, RECORD_DIFFICULTY)
-
-  useEffect(() => {
-    if (!matchOutcome) {
-      return
-    }
-
-    setRecordBook((currentBook) => {
-      const nextBook = recordOutcome(currentBook, {
-        gameKey: GAME_KEY,
-        difficulty: RECORD_DIFFICULTY,
-        outcome: matchOutcome,
-        completionId: `${GAME_KEY}-${sessionScope}-${matchId}-${matchOutcome}`,
-      })
-
-      if (nextBook !== currentBook) {
-        saveRecordBook(window.localStorage, nextBook)
-      }
-
-      return nextBook
-    })
-  }, [matchOutcome, matchId, sessionScope])
 
   function handleResetRecord() {
     setRecordBook((currentBook) => {

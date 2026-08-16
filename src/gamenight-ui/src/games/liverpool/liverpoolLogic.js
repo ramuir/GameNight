@@ -284,6 +284,59 @@ export function validateContract(roundNumber, melds) {
   return { valid: true, melds: normalizedMelds }
 }
 
+export function partitionContract(cards, contract, roundNumber) {
+  function search(remaining, contractIndex, melds) {
+    if (contractIndex === contract.length) {
+      if (remaining.length > 0) return null
+      return validateContract(roundNumber, melds).valid ? melds : null
+    }
+    const type = contract[contractIndex]
+    const minimum = type === 'group' ? 3 : 4
+    const limit = 2 ** remaining.length
+    for (let mask = 1; mask < limit; mask += 1) {
+      const selected = remaining.filter((_, index) => mask & (1 << index))
+      if (selected.length < minimum) continue
+      const rest = remaining.filter((_, index) => !(mask & (1 << index)))
+      const found = search(rest, contractIndex + 1, [...melds, { type, cards: selected }])
+      if (found) return found
+    }
+    return null
+  }
+  return search(cards, 0, [])
+}
+
+export function selectedContract(state, selectedIds, findRoundSevenContract) {
+  const user = state.players.find((player) => player.id === 'player')
+  if (!user || user.hasOpened || selectedIds.length === 0) return null
+  if (state.roundNumber === 7 && selectedIds.length !== user.hand.length) return null
+  const cards = selectedIds.map((id) => user.hand.find((card) => card.id === id)).filter(Boolean)
+  if (state.roundNumber === 7) {
+    return typeof findRoundSevenContract === 'function'
+      ? findRoundSevenContract(state.roundNumber, cards, { requireResidualForNonRoundSeven: false })
+      : null
+  }
+  const contract = ROUND_CONTRACTS[state.roundNumber]
+  for (const types of [contract, [...contract].reverse()]) {
+    const melds = partitionContract(cards, types, state.roundNumber)
+    if (melds) return melds.map((meld) => ({ type: meld.type, cardIds: meld.cards.map((card) => card.id) }))
+  }
+  return null
+}
+
+export function possiblePlayTargets(state) {
+  const topDiscard = state.discardPile.at(-1)
+  if (state.roundStatus !== 'active' || !topDiscard || topDiscard.frozen) return []
+  const targets = []
+  for (const owner of state.players) {
+    owner.melds.forEach((meld, meldIndex) => {
+      if (validateMeld([...meld.cards, topDiscard.card], meld.type).valid) {
+        targets.push({ ownerId: owner.id, meldIndex })
+      }
+    })
+  }
+  return targets
+}
+
 export function drawFromStock(state, playerId, rng = Math.random) {
   const playerIndex = requireTurn(state, playerId, 'draw')
   let next = cloneState(state)

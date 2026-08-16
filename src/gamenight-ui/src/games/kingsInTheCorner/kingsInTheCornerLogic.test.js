@@ -3,7 +3,6 @@ import test from 'node:test'
 
 import {
   getPlayerEndTurnError,
-  getPlayerRoundWinDelta,
   runComputerTurn,
   updateDifficulty,
   updatePlayStyle,
@@ -67,12 +66,6 @@ test('updatePlayStyle normalizes unsupported play styles to open', () => {
   const state = playerActionState({ playStyle: 'open' })
   const next = updatePlayStyle(state, 'all-in')
   assert.equal(next.playStyle, 'open')
-})
-
-test('getPlayerRoundWinDelta counts only finished rounds won by the player', () => {
-  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'finished', winner: 'player' })), 1)
-  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'finished', winner: 'computer' })), 0)
-  assert.equal(getPlayerRoundWinDelta(playerActionState({ phase: 'playerAction', winner: null })), 0)
 })
 
 test('forced play style blocks ending turn when any legal move exists', () => {

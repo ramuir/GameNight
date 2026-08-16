@@ -12,9 +12,12 @@ import {
   getDealCount,
   layOff,
   meldInitialContract,
+  partitionContract,
+  possiblePlayTargets,
   preparePendingDeal,
   replaceJoker,
   scoreHand,
+  selectedContract,
   takeTopDiscard,
   validateContract,
   validateMeld,
@@ -198,6 +201,46 @@ test('meld contracts enforce sizes, naturals, ace and duplicate run boundaries, 
   for (let roundNumber = 1; roundNumber <= 7; roundNumber += 1) {
     assert.equal(validateContract(roundNumber, validContracts[roundNumber]).valid, true)
   }
+})
+
+test('partitionContract finds a valid round-one contract using all selected cards', () => {
+  const cards = [...group('partition-a', '3'), ...group('partition-b', '8')]
+  const partition = partitionContract(cards, ['group', 'group'], 1)
+
+  assert.deepEqual(partition.map((meld) => meld.cards.map((card) => card.id)), [
+    cards.slice(0, 3).map((card) => card.id),
+    cards.slice(3).map((card) => card.id),
+  ])
+})
+
+test('selectedContract enforces the round-seven full-hand rule and delegates its finder', () => {
+  const state = createRoundState({ roundNumber: 7, rng: fixedRng })
+  const user = state.players.find((player) => player.id === 'player')
+  const selectedIds = user.hand.map((card) => card.id)
+  let finderCall = null
+
+  assert.equal(selectedContract(state, selectedIds.slice(0, -1), () => []), null)
+
+  const contract = selectedContract(state, selectedIds, (...args) => {
+    finderCall = args
+    return [{ type: 'run', cardIds: selectedIds }]
+  })
+
+  assert.deepEqual(contract, [{ type: 'run', cardIds: selectedIds }])
+  assert.equal(finderCall[0], 7)
+  assert.deepEqual(finderCall[1], user.hand)
+  assert.deepEqual(finderCall[2], { requireResidualForNonRoundSeven: false })
+})
+
+test('possiblePlayTargets finds every meld that accepts the top discard', () => {
+  const state = createRoundState({ roundNumber: 1, rng: fixedRng })
+  const targetOwner = state.players[1]
+  targetOwner.melds = [{ type: 'group', cards: group('target', '7') }]
+  state.discardPile = [{ card: natural('play-target', '7', 'spades'), discardedBy: 'player', frozen: false }]
+
+  assert.deepEqual(possiblePlayTargets(state), [{ ownerId: targetOwner.id, meldIndex: 0 }])
+  state.discardPile[0].frozen = true
+  assert.deepEqual(possiblePlayTargets(state), [])
 })
 
 test('joker replacement is exact and reclaimed joker is reused in the same transition', () => {
