@@ -228,7 +228,6 @@
   box-shadow:
     0 0 24px rgba(177, 109, 255, 0.34),
     inset 0 0 0 1px rgba(177, 109, 255, 0.24);
-  animation: seat-buy-pulse 700ms ease-in-out 3;
 }
 
 .seat-turn {
@@ -238,10 +237,11 @@
     inset 0 0 0 1px rgba(255, 102, 117, 0.24);
 }
 
-@keyframes seat-buy-pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-  100% { transform: scale(1); }
+.seat-turn.seat-buy-highlight {
+  --seat-accent: #b16dff;
+  box-shadow:
+    0 0 24px rgba(177, 109, 255, 0.34),
+    inset 0 0 0 1px rgba(177, 109, 255, 0.24);
 }
 
 .opponent-card-stack {
@@ -446,6 +446,7 @@ button.meld-fan:hover .meld-fan-cards,
 .table-pile img { width: 100%; height: 100%; object-fit: cover; }
 
 .table-pile:disabled { cursor: not-allowed; filter: saturate(0.55) brightness(0.72); }
+.table-pile-buy-presentation:disabled { filter: none; }
 .table-pile-frozen { box-shadow: inset 0 0 0 2px rgba(126, 217, 255, 0.62); }
 .frozen-label {
   position: absolute;
@@ -460,6 +461,26 @@ button.meld-fan:hover .meld-fan-cards,
 }
 
 .table-pile-discard { border: 1px solid rgba(255, 79, 149, 0.52); background: rgba(255, 79, 149, 0.1); }
+.bought-card-presentation {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  background: #050813;
+}
+
+.bought-card-presentation img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.table-pile-discard.table-pile-buy-presentation {
+  border: 2px solid #b16dff;
+  box-shadow: 0 0 0 1px #3d1d5f, 0 0 16px rgba(177, 109, 255, 0.66);
+}
+
 .table-pile-draw { border: 1px solid rgba(48, 229, 255, 0.42); background: linear-gradient(145deg, #0b2940, #071522); }
 
 .deck-back {

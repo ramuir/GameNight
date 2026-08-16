@@ -2,11 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  createKingsInTheCornerState,
   getPlayerEndTurnError,
   runComputerTurn,
   updateDifficulty,
   updatePlayStyle,
 } from './kingsInTheCornerLogic.js'
+
+test('new games default to hard difficulty', () => {
+  assert.equal(createKingsInTheCornerState().difficulty, 'hard')
+})
 
 function card(id, rank, value, suit, color) {
   return {

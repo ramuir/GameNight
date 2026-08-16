@@ -380,8 +380,9 @@ test('Buy wait is user-only after CPU 1 discard and can be skipped', async ({ pa
 test('accepted user Buy completes before CPU 2 draws without reopening the window', async ({ page }) => {
   await page.goto('/?game=liverpool&seed=0044&fixture=buy-after-cpu1')
 
-  await page.getByRole('button', { name: 'Buy 10' }).click()
+  await page.getByRole('button', { name: /^Buy \d+$/ }).click()
 
+  await expect(page.getByTestId('bought-card-presentation')).toHaveCount(0)
   await expect(page.getByLabel('Your hand, 3 cards')).toBeVisible()
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
   await expect(page.getByLabel('CPU 2, score 0, 2 cards remaining')).toBeVisible()
@@ -503,7 +504,22 @@ test('CPU buy after a user discard resolves immediately before CPU 1 draws', asy
   await selectCard(page, 'King of spades')
   await page.getByTestId('action-bar').getByRole('button', { name: 'Discard', exact: true }).click()
 
-  await expect(page.getByRole('timer')).toHaveText('Buy 10s')
+  const boughtCard = page.getByTestId('bought-card-presentation')
+  const boughtPile = boughtCard.locator('..')
+  const buyerSeat = page.getByLabel(/^CPU 2, score 0/)
+  await expect(boughtCard).toHaveAttribute('data-card-id', 'fixture-user-discard')
+  await expect(boughtCard).toHaveAttribute('data-duration-ms', '3000')
+  await expect(buyerSeat).toHaveClass(/seat-buy-highlight/)
+  expect(await boughtPile.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe('rgb(177, 109, 255)')
+  expect(await buyerSeat.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe('color(srgb 0.694118 0.427451 1 / 0.62)')
+  expect(await buyerSeat.evaluate((element) => getComputedStyle(element).animationName)).toBe('none')
+  await page.waitForTimeout(2000)
+  await expect(boughtCard).toBeVisible()
+  await expect(page.getByRole('timer')).not.toContainText('Buy')
+  expect(await page.evaluate(() => window.__statusHistory)).not.toContain('CPU 1 chose discard.')
+  await expect(boughtCard).toHaveCount(0, { timeout: 1500 })
+  await expect(buyerSeat).not.toHaveClass(/seat-buy-highlight/)
+  await expect(page.getByRole('timer')).toHaveText(/^Buy \d+s$/, { timeout: 3000 })
   const statusHistory = await page.evaluate(() => window.__statusHistory)
   expect(statusHistory).toContain('CPU 2 bought the discard. CPU 1 drew from stock.')
   expect(statusHistory.indexOf('CPU 2 bought the discard. CPU 1 drew from stock.')).toBeLessThan(statusHistory.indexOf('CPU 1 discarded. Buy now or skip before CPU 2 draws.'))
@@ -523,6 +539,17 @@ test('CPU meld stays in CPU region and accepts a user layoff', async ({ page }) 
   await expect(page.getByLabel('Your hand, 1 cards')).toBeVisible()
   await expect(cpuSection.locator('.meld-fan-card')).toHaveCount(4)
   await expect(page.getByRole('status')).toContainText('Cards laid off on CPU 1 meld 1.')
+})
+
+test('laying off the final card completes a normal hand without a discard', async ({ page }) => {
+  await page.goto('/?game=liverpool&seed=0044&fixture=layoff-opponent-last-card')
+
+  await selectCard(page, '5 of spades')
+  await page.getByRole('button', { name: 'Target CPU 1 meld 1' }).click()
+
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'complete')
+  await expect(page.getByRole('heading', { name: 'Hand 1 Complete' })).toBeVisible()
+  await expect(page.getByText('You went out')).toBeVisible()
 })
 
 for (const viewport of viewports) {

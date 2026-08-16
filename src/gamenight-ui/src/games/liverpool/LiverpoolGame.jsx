@@ -27,7 +27,7 @@ const RECORD_DIFFICULTY = 'standard'
 const USER_ID = 'player'
 const PLAYER_IDS = [USER_ID, 'cpu-1', 'cpu-2']
 const PLAYER_NAMES = { player: 'You', 'cpu-1': 'CPU 1', 'cpu-2': 'CPU 2' }
-const BUY_HIGHLIGHT_MS = 2000
+const BUY_HIGHLIGHT_MS = 3000
 
 function seededRandom(seedText = '0044') {
   let seed = [...seedText].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 2166136261)
@@ -249,7 +249,7 @@ export function LiverpoolGame() {
   const [cutOutcome, setCutOutcome] = useState(null)
   const [cutReveal, setCutReveal] = useState(null)
   const [animatedUserScore, setAnimatedUserScore] = useState(null)
-  const [buyHighlightPlayerId, setBuyHighlightPlayerId] = useState(null)
+  const [buyPresentation, setBuyPresentation] = useState(null)
   const [recordBook, setRecordBook] = useState(() => loadRecordBook(window.localStorage))
   const [matchId, setMatchId] = useState(1)
   const [sessionScope] = useState(createSessionScopeId)
@@ -281,15 +281,16 @@ export function LiverpoolGame() {
   const hand = resolvedHandOrder.map((cardId) => handCardsById.get(cardId)).filter(Boolean)
   const isCutPreviewFixture = import.meta.env.DEV && queryOptions().fixture === 'cut-preview'
   const cutFeedbackByPlayer = cutOutcome?.playerId ? { [cutOutcome.playerId]: cutOutcome } : {}
+  const buyHighlightPlayerId = buyPresentation?.playerId ?? null
 
-  function markBuyHighlight(playerId, durationMs = 3000) {
-    if (!playerId) return
-    setBuyHighlightPlayerId(playerId)
+  function showOpponentBuy(result, card) {
+    if (!result.resolved || result.playerId === USER_ID || !card) return
+    setBuyPresentation({ playerId: result.playerId, card: { ...card } })
     if (buyHighlightTimerRef.current) window.clearTimeout(buyHighlightTimerRef.current)
     buyHighlightTimerRef.current = window.setTimeout(() => {
-      setBuyHighlightPlayerId(null)
+      setBuyPresentation(null)
       buyHighlightTimerRef.current = null
-    }, durationMs)
+    }, BUY_HIGHLIGHT_MS)
   }
 
   useEffect(() => (() => {
@@ -371,7 +372,7 @@ export function LiverpoolGame() {
     if (pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === pendingDrawPlayerId) {
       next = drawFromStock(next, pendingDrawPlayerId, rngRef.current)
     }
-    if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
+    showOpponentBuy(result, topDiscard?.card)
     setReaction(null)
     updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard.` : 'Buy skipped.')
   }
@@ -394,7 +395,7 @@ export function LiverpoolGame() {
         if (reaction.pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === reaction.pendingDrawPlayerId) {
           next = drawFromStock(next, reaction.pendingDrawPlayerId, rngRef.current)
         }
-        if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
+        showOpponentBuy(result, topDiscard?.card)
         setReaction(null)
         updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard.` : 'Buy window closed.')
         return
@@ -404,10 +405,10 @@ export function LiverpoolGame() {
       updateState(result.state, result.resolved ? `${PLAYER_NAMES[result.playerId]} called PLAY.` : 'PLAY window closed.')
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [gameState, reaction, updateState])
+  }, [gameState, reaction, topDiscard?.card, updateState])
 
   useEffect(() => {
-    if (reaction || gameState.roundStatus !== 'active' || isUserTurn) return undefined
+    if (reaction || buyPresentation || gameState.roundStatus !== 'active' || isUserTurn) return undefined
     const timer = window.setTimeout(() => {
       try {
         const action = chooseLiverpoolCpuAction(gameState, activePlayer.id, rngRef.current)
@@ -419,7 +420,7 @@ export function LiverpoolGame() {
             setNotice('CPU 1 discarded. Buy now or skip before CPU 2 draws.')
           } else {
             const { result, next } = resolveCpuBuysThenDraw(gameState, activePlayer.id, rngRef.current)
-            if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
+            showOpponentBuy(result, topDiscard?.card)
             updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard. ${PLAYER_NAMES[activePlayer.id]} drew from stock.` : `${PLAYER_NAMES[activePlayer.id]} drew from stock.`)
           }
           return
@@ -434,7 +435,7 @@ export function LiverpoolGame() {
       }
     }, 350)
     return () => window.clearTimeout(timer)
-  }, [activePlayer?.id, gameState, isUserTurn, reaction, topDiscard?.discardedBy, topDiscard?.frozen, updateState])
+  }, [activePlayer?.id, buyPresentation, gameState, isUserTurn, reaction, topDiscard?.card, topDiscard?.discardedBy, topDiscard?.frozen, updateState])
 
   useEffect(() => {
     if (gameState.roundStatus !== 'cutting' || cutReveal) return undefined
@@ -545,7 +546,7 @@ export function LiverpoolGame() {
       return
     }
     const { result, next } = resolveCpuBuysThenDraw(gameState, USER_ID, rngRef.current)
-    if (result.resolved) markBuyHighlight(result.playerId, BUY_HIGHLIGHT_MS)
+    showOpponentBuy(result, topDiscard?.card)
     updateState(next, result.resolved ? `${PLAYER_NAMES[result.playerId]} bought the discard. You drew from stock.` : 'You drew from stock.', { preserveSelection: true })
   }
 
@@ -618,7 +619,6 @@ export function LiverpoolGame() {
     if (pendingDrawPlayerId && next.roundStatus === 'active' && next.phase === 'draw' && next.players[next.activePlayerIndex].id === pendingDrawPlayerId) {
       next = drawFromStock(next, pendingDrawPlayerId, rngRef.current)
     }
-    markBuyHighlight(result.playerId)
     setReaction(null)
     updateState(next, `You bought the discard and drew one card. ${PLAYER_NAMES[pendingDrawPlayerId]} drew from stock.`, { preserveSelection: true })
   }
@@ -769,9 +769,14 @@ export function LiverpoolGame() {
         <section className="liverpool-center" aria-label="Center table actions">
           <div className={`turn-orb${reaction ? ` turn-orb-${reaction.kind}` : ''}`} role="timer" aria-live="polite">{timerLabel}</div>
           <div className="table-piles" data-testid="center-piles">
-            <button type="button" className={`table-pile table-pile-discard${topDiscard?.frozen ? ' table-pile-frozen' : ''}`} aria-label={`${topDiscard?.frozen ? 'Frozen ' : ''}discard pile${canDraw ? ', take top card' : ''}`} onClick={() => attempt(() => takeTopDiscard(gameState, USER_ID), 'You took the top discard.', { preserveSelection: true })} disabled={!canDraw || topDiscard?.frozen}>
+            <button type="button" className={`table-pile table-pile-discard${topDiscard?.frozen ? ' table-pile-frozen' : ''}${buyPresentation ? ' table-pile-buy-presentation' : ''}`} aria-label={`${topDiscard?.frozen ? 'Frozen ' : ''}discard pile${canDraw ? ', take top card' : ''}`} onClick={() => attempt(() => takeTopDiscard(gameState, USER_ID), 'You took the top discard.', { preserveSelection: true })} disabled={!canDraw || topDiscard?.frozen}>
               {topDiscard ? <img src={getCardImage(topDiscard.card)} alt={cardLabel(topDiscard.card)} /> : null}
               {topDiscard?.frozen ? <span className="frozen-label">Frozen</span> : null}
+              {buyPresentation ? (
+                <span className="bought-card-presentation" data-testid="bought-card-presentation" data-card-id={buyPresentation.card.id} data-duration-ms={BUY_HIGHLIGHT_MS} aria-hidden="true">
+                  <img src={getCardImage(buyPresentation.card)} alt="" />
+                </span>
+              ) : null}
             </button>
             <button type="button" className="table-pile table-pile-draw" aria-label={`Draw pile, ${gameState.stock.length} cards`} onClick={handleDrawStock} disabled={!canDraw}><span className="deck-back" aria-hidden="true" /></button>
           </div>

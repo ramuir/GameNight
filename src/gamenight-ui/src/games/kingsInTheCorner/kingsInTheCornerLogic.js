@@ -589,7 +589,7 @@ export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey) {
 }
 
 export function createKingsInTheCornerState() {
-  return buildSetupState('medium')
+  return buildSetupState('hard')
 }
 
 export function shuffleKingsInTheCorner(state) {

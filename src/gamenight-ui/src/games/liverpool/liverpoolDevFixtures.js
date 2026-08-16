@@ -162,13 +162,16 @@ export function createDevFixtureState({ fixture, roundNumber, scores }) {
     }
     return state
   }
-  if (fixture === 'layoff-opponent' && roundNumber === 1 && !scores) {
+  if (['layoff-opponent', 'layoff-opponent-last-card'].includes(fixture) && roundNumber === 1 && !scores) {
     const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
     const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0044') })
     state.activePlayerIndex = 0
     state.phase = 'action'
     state.players[0].hasOpened = true
-    state.players[0].hand = [card('fixture-layoff', '5', 'spades'), card('fixture-keep', 'K', 'clubs')]
+    state.players[0].hand = [
+      card('fixture-layoff', '5', 'spades'),
+      ...(fixture === 'layoff-opponent' ? [card('fixture-keep', 'K', 'clubs')] : []),
+    ]
     state.players[0].melds = []
     state.players[1].hasOpened = true
     state.players[1].melds = [{ type: 'group', cards: [
