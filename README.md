@@ -2,6 +2,8 @@
 
 Multi-game tabletop card and board game suite with a unified React/Vite UI and native game logic.
 
+![GameNight landing page carousel cycling through Kings in the Corner, Connect Four, and Liverpool Rummy](assets/gamenight-landing-demo.gif)
+
 ## Supported Games
 
 - **Kings in the Corner** — A fun solitaire-style card game of strategy and speed.
@@ -66,6 +68,16 @@ Run linter:
 ```bash
 npm run lint
 ```
+
+## Demo Asset
+
+Regenerate the landing-page demo GIF above (starts its own dev server, records with Playwright, encodes with ffmpeg):
+
+```bash
+node scripts/capture-landing-demo.mjs
+```
+
+The script steps down resolution and frame rate until the GIF is under 5 MB and writes it to `assets/gamenight-landing-demo.gif`.
 
 Run combined security audit and custom security scan:
 
