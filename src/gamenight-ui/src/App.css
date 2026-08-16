@@ -1,30 +1,30 @@
 /* @import url('https://fonts.googleapis.com/css2?family=Bungee&display=swap'); */
 @import url('https://fonts.googleapis.com/css?family=Warnes&display=swap');
-@import './components/WinBadgeCluster.css';
 
+/* Hue resolves per element, so the same flicker drives the home sign and each game accent. */
 @keyframes neon-flicker {
   0%, 18%, 22%, 62%, 64%, 100% {
     opacity: 1;
     text-shadow:
-      0 0 12px rgba(48, 229, 255, 0.74),
-      0 0 30px rgba(48, 229, 255, 0.5),
-      0 0 54px rgba(48, 229, 255, 0.3);
+      0 0 12px rgba(var(--game-accent-rgb, 48, 229, 255), 0.74),
+      0 0 30px rgba(var(--game-accent-rgb, 48, 229, 255), 0.5),
+      0 0 54px rgba(var(--game-accent-rgb, 48, 229, 255), 0.3);
   }
 
   20%, 24% {
     opacity: 0.92;
     text-shadow:
-      0 0 6px rgba(48, 229, 255, 0.55),
-      0 0 16px rgba(48, 229, 255, 0.28),
-      0 0 28px rgba(48, 229, 255, 0.14);
+      0 0 6px rgba(var(--game-accent-rgb, 48, 229, 255), 0.55),
+      0 0 16px rgba(var(--game-accent-rgb, 48, 229, 255), 0.28),
+      0 0 28px rgba(var(--game-accent-rgb, 48, 229, 255), 0.14);
   }
 
   63% {
     opacity: 0.96;
     text-shadow:
-      0 0 8px rgba(48, 229, 255, 0.6),
-      0 0 22px rgba(48, 229, 255, 0.34),
-      0 0 38px rgba(48, 229, 255, 0.18);
+      0 0 8px rgba(var(--game-accent-rgb, 48, 229, 255), 0.6),
+      0 0 22px rgba(var(--game-accent-rgb, 48, 229, 255), 0.34),
+      0 0 38px rgba(var(--game-accent-rgb, 48, 229, 255), 0.18);
   }
 }
 
@@ -173,11 +173,50 @@
 }
 
 .app-header-game .app-title {
-  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-family: 'Warnes', 'Bahnschrift Condensed', 'Bahnschrift', 'Arial Narrow', 'Segoe UI', sans-serif;
+  font-size: clamp(1.35rem, 2.3vw, 1.95rem);
+  font-weight: 400;
   letter-spacing: 0.08em;
   line-height: 1;
   text-transform: uppercase;
-  color: var(--cyan-400);
+  color: var(--game-accent, var(--cyan-400));
+  transform: skewX(-4deg);
+  text-shadow:
+    0 0 10px rgba(var(--game-accent-rgb, 48, 229, 255), 0.72),
+    0 0 26px rgba(var(--game-accent-rgb, 48, 229, 255), 0.5),
+    0 0 44px rgba(var(--game-accent-rgb, 48, 229, 255), 0.34);
+  animation: neon-flicker 4.8s linear infinite;
+}
+
+/* text-shadow and color are inherited, so the sign keeps flickering through the button. */
+.app-title-home-link {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.app-title-home-link:focus-visible {
+  outline: 3px solid var(--game-accent, var(--cyan-400));
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.app-header-game {
+  background:
+    linear-gradient(180deg, rgba(4, 10, 24, 0.9), rgba(8, 18, 33, 0.86)),
+    radial-gradient(circle at 86% 24%, rgba(var(--game-accent-rgb, 48, 229, 255), 0.14), transparent 45%);
+  border-color: rgba(var(--game-accent-rgb, 48, 229, 255), 0.34);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.28),
+    0 0 26px rgba(var(--game-accent-rgb, 48, 229, 255), 0.18),
+    inset 0 0 0 1px rgba(var(--game-accent-rgb, 48, 229, 255), 0.1);
 }
 
 .app-header-game .eyebrow {

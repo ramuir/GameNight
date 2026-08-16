@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './KingsInTheCornerGame.css'
+import { GameRecordPopup } from '../../shared/GameRecordPopup.jsx'
+import { clearRecordEntry, createSessionScopeId, getRecordEntry, loadRecordBook, recordOutcome, saveRecordBook } from '../../shared/gameRecordStore.js'
 import {
   attemptPlayerMove,
   attemptPlayerPileMove,
@@ -11,10 +13,11 @@ import {
   getPlayerEndTurnError,
   runComputerTurn,
   shuffleKingsInTheCorner,
-  getPlayerRoundWinDelta,
   updateDifficulty,
   updatePlayStyle,
 } from './kingsInTheCornerLogic.js'
+
+const GAME_KEY = 'kingsInTheCorner'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', {
   eager: true,
@@ -61,7 +64,6 @@ function ControlCycleButton({ children, onClick }) {
 }
 
 function PileSlot({
-  title,
   cards,
   onClick,
   onDropCard,
@@ -89,7 +91,6 @@ function PileSlot({
         onDropCard()
       }}
     >
-      <span className="pile-title">{title}</span>
       {cards.length > 0 ? (
         <div className={`pile-preview${hasStack ? ' pile-preview-stacked' : ''}`}>
           {baseCard && (
@@ -142,19 +143,24 @@ function HiddenCards({ count, rowRef, isOverflowing }) {
 }
 
 export function KingsInTheCornerGame() {
-  const [gameState, setGameState] = useState(() => createKingsInTheCornerState())
+  const previewMode = new URLSearchParams(window.location.search).get('preview')
+  const [gameState, setGameState] = useState(() => {
+    const initialState = createKingsInTheCornerState()
+    return previewMode === 'dealt' ? dealKingsInTheCorner(initialState) : initialState
+  })
   const [selectedCardId, setSelectedCardId] = useState(null)
   const [draggedCardId, setDraggedCardId] = useState(null)
   const [draggedSourcePile, setDraggedSourcePile] = useState(null)
   const [selectedSourcePile, setSelectedSourcePile] = useState(null)
   const [illegalMoveShake, setIllegalMoveShake] = useState(false)
   const [isEndPopupVisible, setIsEndPopupVisible] = useState(false)
-  const [playerWins, setPlayerWins] = useState(0)
+  const [recordBook, setRecordBook] = useState(() => loadRecordBook(window.localStorage))
+  const [roundId, setRoundId] = useState(1)
+  const [sessionScope] = useState(createSessionScopeId)
   const [isPlayerHandOverflowing, setIsPlayerHandOverflowing] = useState(false)
   const [isComputerHandOverflowing, setIsComputerHandOverflowing] = useState(false)
   const playerHandRowRef = useRef(null)
   const computerHandRowRef = useRef(null)
-  const previewMode = new URLSearchParams(window.location.search).get('preview')
 
   const selectedCard = gameState.playerHand.find((card) => card.id === selectedCardId) ?? null
   const draggedCard = gameState.playerHand.find((card) => card.id === draggedCardId) ?? null
@@ -171,57 +177,51 @@ export function KingsInTheCornerGame() {
     : activeCard
       ? getLegalTargetKeys(activeCard, gameState.piles)
       : []
-  const winnerMessage =
-    gameState.winner === 'player'
-      ? 'You Win!'
-      : gameState.winner === 'computer'
-        ? 'You Lose'
-        : gameState.winner === 'draw'
-          ? 'Draw Game'
-          : 'Round Complete'
-  const winCount = playerWins
+  const roundOutcome =
+    gameState.winner === 'player' ? 'win' : gameState.winner === 'computer' ? 'loss' : gameState.winner === 'draw' ? 'draw' : null
+  const recordEntry = getRecordEntry(recordBook, GAME_KEY, gameState.difficulty)
 
-  useEffect(() => {
-    const winDelta = getPlayerRoundWinDelta(gameState)
-    if (winDelta === 0) {
-      return
-    }
+  function commitState(nextState) {
+    setGameState(nextState)
 
-    setPlayerWins((currentWins) => currentWins + winDelta)
-  }, [gameState.phase, gameState.winner])
+    const nextOutcome =
+      nextState.winner === 'player'
+        ? 'win'
+        : nextState.winner === 'computer'
+          ? 'loss'
+          : nextState.winner === 'draw'
+            ? 'draw'
+            : null
 
-  useEffect(() => {
-    if (previewMode !== 'dealt') {
-      return
-    }
-
-    setGameState((current) => (current.phase === 'setup' ? dealKingsInTheCorner(current) : current))
-  }, [previewMode])
-
-  useEffect(() => {
-    if (gameState.phase === 'finished') {
+    if (nextState.phase === 'finished' && nextOutcome) {
       setIsEndPopupVisible(true)
+      setRecordBook((currentBook) => {
+        const nextBook = recordOutcome(currentBook, {
+          gameKey: GAME_KEY,
+          difficulty: nextState.difficulty,
+          outcome: nextOutcome,
+          completionId: `${GAME_KEY}-${sessionScope}-${roundId}-${nextState.difficulty}-${nextOutcome}`,
+        })
+
+        if (nextBook !== currentBook) {
+          saveRecordBook(window.localStorage, nextBook)
+        }
+
+        return nextBook
+      })
       return
     }
 
     setIsEndPopupVisible(false)
-  }, [gameState.phase])
+  }
 
-  useEffect(() => {
-    if (!isEndPopupVisible) {
-      return undefined
-    }
-
-    function handleDismissOnKey() {
-      setIsEndPopupVisible(false)
-    }
-
-    window.addEventListener('keydown', handleDismissOnKey)
-
-    return () => {
-      window.removeEventListener('keydown', handleDismissOnKey)
-    }
-  }, [isEndPopupVisible])
+  function handleResetRecord() {
+    setRecordBook((currentBook) => {
+      const nextBook = clearRecordEntry(currentBook, GAME_KEY, gameState.difficulty)
+      saveRecordBook(window.localStorage, nextBook)
+      return nextBook
+    })
+  }
 
   useEffect(() => {
     function measureHandOverflow() {
@@ -274,35 +274,36 @@ export function KingsInTheCornerGame() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => updateDifficulty(current, nextDifficulty))
+    commitState(updateDifficulty(gameState, nextDifficulty))
   }
 
   function handlePlayStyleChange(nextPlayStyle) {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => updatePlayStyle(current, nextPlayStyle))
+    commitState(updatePlayStyle(gameState, nextPlayStyle))
   }
 
   function handleShuffle() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => shuffleKingsInTheCorner(current))
+    commitState(shuffleKingsInTheCorner(gameState))
   }
 
   function handleDeal() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => dealKingsInTheCorner(current))
+    setRoundId((current) => current + 1)
+    commitState(dealKingsInTheCorner(gameState))
   }
 
   function handleDraw() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => drawForPlayer(current))
+    commitState(drawForPlayer(gameState))
   }
 
   function handleCardSelect(cardId) {
@@ -369,7 +370,7 @@ export function KingsInTheCornerGame() {
       const targetKey = `${area}:${key}`
       const isLegalTarget = legalTargetKeys.includes(targetKey)
 
-      setGameState((current) => attemptPlayerMove(current, selectedCard.id, area, key))
+      commitState(attemptPlayerMove(gameState, selectedCard.id, area, key))
       setSelectedCardId(null)
 
       if (!isLegalTarget) {
@@ -387,9 +388,7 @@ export function KingsInTheCornerGame() {
       const targetKey = `${area}:${key}`
       const isLegalTarget = legalTargetKeys.includes(targetKey)
 
-      setGameState((current) =>
-        attemptPlayerPileMove(current, selectedSourcePile.area, selectedSourcePile.key, area, key),
-      )
+      commitState(attemptPlayerPileMove(gameState, selectedSourcePile.area, selectedSourcePile.key, area, key))
       setSelectedSourcePile(null)
 
       if (!isLegalTarget) {
@@ -414,11 +413,9 @@ export function KingsInTheCornerGame() {
     const isLegalTarget = legalTargetKeys.includes(targetKey)
 
     if (draggedSourcePile) {
-      setGameState((current) =>
-        attemptPlayerPileMove(current, draggedSourcePile.area, draggedSourcePile.key, area, key),
-      )
+      commitState(attemptPlayerPileMove(gameState, draggedSourcePile.area, draggedSourcePile.key, area, key))
     } else {
-      setGameState((current) => attemptPlayerMove(current, movingCard.id, area, key))
+      commitState(attemptPlayerMove(gameState, movingCard.id, area, key))
     }
     setSelectedCardId(null)
     setSelectedSourcePile(null)
@@ -434,22 +431,26 @@ export function KingsInTheCornerGame() {
     setSelectedCardId(null)
     setDraggedSourcePile(null)
     setSelectedSourcePile(null)
-    setGameState((current) => {
-      const error = getPlayerEndTurnError(current)
+    const error = getPlayerEndTurnError(gameState)
 
-      if (error) {
-        return {
-          ...current,
-          status: error,
-        }
-      }
+    if (error) {
+      commitState({
+        ...gameState,
+        status: error,
+      })
+      return
+    }
 
-      return runComputerTurn(current)
-    })
+    commitState(runComputerTurn(gameState))
   }
 
   function dismissEndPopup() {
     setIsEndPopupVisible(false)
+  }
+
+  function handlePlayAgain() {
+    setIsEndPopupVisible(false)
+    handleDeal()
   }
 
   return (
@@ -556,9 +557,7 @@ export function KingsInTheCornerGame() {
             isSourceSelected={selectedSourcePile?.area === 'tableau' && selectedSourcePile?.key === 'left'}
           />
           <div className="deck-card">
-            <span className="pile-title">Draw Pile</span>
             <CardBack className="playing-card-back-deck" />
-            <span className="deck-count">{gameState.deck.length} cards</span>
           </div>
 
           <PileSlot
@@ -646,22 +645,21 @@ export function KingsInTheCornerGame() {
         </div>
       </section>
 
-      {isEndPopupVisible && (
-        <div className="end-popup-backdrop" role="status" aria-live="polite" onClick={dismissEndPopup}>
-          <div className="end-popup-card" onClick={dismissEndPopup} role="button" tabIndex={0} onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              dismissEndPopup()
-            }
-          }}>
-            <h3>{winnerMessage}</h3>
-            <p>{gameState.status}</p>
-            <p className="end-popup-hint">Click to close</p>
-          </div>
-        </div>
+      {isEndPopupVisible && roundOutcome && (
+        <GameRecordPopup
+          gameName="Kings in the Corner"
+          accent="cyan"
+          outcome={roundOutcome}
+          message={gameState.status}
+          footerItems={[{ label: 'Difficulty', value: gameState.difficulty }]}
+          entry={recordEntry}
+          onPlayAgain={handlePlayAgain}
+          onClose={dismissEndPopup}
+          onResetRecord={handleResetRecord}
+          playAgainLabel="Deal Again"
+        />
       )}
       </section>
-      <span className="game-shell-badge" aria-label={`${winCount} win${winCount === 1 ? '' : 's'}`}>{winCount}</span>
     </div>
   )
 }

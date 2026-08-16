@@ -82,47 +82,11 @@
   overflow: hidden;
 }
 
-.liverpool-round-summary {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 25;
-  width: min(560px, calc(100% - 24px));
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(48, 229, 255, 0.36);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, rgba(3, 10, 18, 0.94), rgba(7, 18, 31, 0.95));
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.44), inset 0 0 0 1px rgba(48, 229, 255, 0.1);
-  pointer-events: none;
-}
-
-.liverpool-round-summary-header {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 8px;
-  color: var(--paper-100);
-}
-
-.liverpool-round-summary-header strong {
-  color: var(--cyan-400);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.liverpool-round-summary-header span {
-  color: var(--paper-200);
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .liverpool-round-summary-table {
   width: 100%;
   border-collapse: collapse;
   color: var(--paper-100);
-  font-size: 0.56rem;
+  font-size: 0.68rem;
 }
 
 .liverpool-round-summary-table th,
@@ -264,7 +228,6 @@
   box-shadow:
     0 0 24px rgba(177, 109, 255, 0.34),
     inset 0 0 0 1px rgba(177, 109, 255, 0.24);
-  animation: seat-buy-pulse 700ms ease-in-out 3;
 }
 
 .seat-turn {
@@ -274,10 +237,11 @@
     inset 0 0 0 1px rgba(255, 102, 117, 0.24);
 }
 
-@keyframes seat-buy-pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-  100% { transform: scale(1); }
+.seat-turn.seat-buy-highlight {
+  --seat-accent: #b16dff;
+  box-shadow:
+    0 0 24px rgba(177, 109, 255, 0.34),
+    inset 0 0 0 1px rgba(177, 109, 255, 0.24);
 }
 
 .opponent-card-stack {
@@ -482,6 +446,7 @@ button.meld-fan:hover .meld-fan-cards,
 .table-pile img { width: 100%; height: 100%; object-fit: cover; }
 
 .table-pile:disabled { cursor: not-allowed; filter: saturate(0.55) brightness(0.72); }
+.table-pile-buy-presentation:disabled { filter: none; }
 .table-pile-frozen { box-shadow: inset 0 0 0 2px rgba(126, 217, 255, 0.62); }
 .frozen-label {
   position: absolute;
@@ -496,6 +461,26 @@ button.meld-fan:hover .meld-fan-cards,
 }
 
 .table-pile-discard { border: 1px solid rgba(255, 79, 149, 0.52); background: rgba(255, 79, 149, 0.1); }
+.bought-card-presentation {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  background: #050813;
+}
+
+.bought-card-presentation img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.table-pile-discard.table-pile-buy-presentation {
+  border: 2px solid #b16dff;
+  box-shadow: 0 0 0 1px #3d1d5f, 0 0 16px rgba(177, 109, 255, 0.66);
+}
+
 .table-pile-draw { border: 1px solid rgba(48, 229, 255, 0.42); background: linear-gradient(145deg, #0b2940, #071522); }
 
 .deck-back {
@@ -924,6 +909,37 @@ button.meld-fan:hover .meld-fan-cards,
   box-shadow: 0 0 18px rgba(255, 79, 149, 0.28);
 }
 
+/* Neon tube treatment for the core table actions only: Discard, Buy and PLAY. */
+.table-action-group-center .table-action-primary {
+  --btn-rgb: var(--game-accent-rgb, 48, 229, 255);
+  border: 2px solid rgba(var(--btn-rgb), 0.85);
+  background: rgba(4, 10, 20, 0.55);
+  color: rgb(var(--btn-rgb));
+  text-shadow: 0 0 9px rgba(var(--btn-rgb), 0.7);
+  box-shadow:
+    0 0 10px rgba(var(--btn-rgb), 0.5),
+    0 0 26px rgba(var(--btn-rgb), 0.24),
+    inset 0 0 12px rgba(var(--btn-rgb), 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.table-action-group-center .table-action-play:not(:disabled) {
+  --btn-rgb: 255, 79, 149;
+}
+
+.table-action-group-center .table-action-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 16px rgba(var(--btn-rgb), 0.75),
+    0 0 40px rgba(var(--btn-rgb), 0.4),
+    inset 0 0 16px rgba(var(--btn-rgb), 0.26);
+}
+
+.table-action-group-center .table-action-primary:disabled {
+  box-shadow: none;
+  text-shadow: none;
+}
+
 .liverpool-mode-control select:focus-visible,
 .table-pile:focus-visible,
 .cut-stop:focus-visible,
@@ -960,10 +976,6 @@ button.meld-fan:hover .meld-fan-cards,
   .liverpool-notice { min-height: 0; }
   .liverpool-table-actions { grid-template-columns: 1fr; }
   .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
-  .liverpool-round-summary {
-    width: min(520px, calc(100% - 16px));
-    padding: 8px 10px;
-  }
 }
 
 @media (max-width: 600px) {
@@ -982,12 +994,7 @@ button.meld-fan:hover .meld-fan-cards,
   .liverpool-table-actions { grid-template-columns: 1fr; }
   .table-action-group { width: 100%; justify-content: center; flex-wrap: wrap; }
   .table-action { min-height: 44px; }
-  .liverpool-round-summary {
-    width: calc(100% - 12px);
-    border-radius: 11px;
-    padding: 7px 8px;
-  }
   .liverpool-round-summary-table {
-    font-size: 0.52rem;
+    font-size: 0.6rem;
   }
 }

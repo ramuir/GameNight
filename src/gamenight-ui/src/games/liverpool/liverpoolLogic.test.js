@@ -12,9 +12,12 @@ import {
   getDealCount,
   layOff,
   meldInitialContract,
+  partitionContract,
+  possiblePlayTargets,
   preparePendingDeal,
   replaceJoker,
   scoreHand,
+  selectedContract,
   takeTopDiscard,
   validateContract,
   validateMeld,
@@ -102,6 +105,30 @@ test('prepare shuffles exactly once and cut dealing reconstructs the rotated pre
   assert.notEqual(dealt.players[0].hand[0].id, uncut.players[0].hand[0].id)
 })
 
+test('initial discard skips jokers without removing them from stock', () => {
+  const pending = createPendingRoundState()
+  const deck = createLiverpoolDeck()
+  const skippedJoker = deck.find((card) => card.isJoker)
+  const initialDiscard = deck.find((card) => !card.isJoker)
+  const remaining = deck.filter((card) => card.id !== skippedJoker.id && card.id !== initialDiscard.id)
+  const dealCards = remaining.splice(-30)
+  const cutting = {
+    ...pending,
+    stock: [...remaining, initialDiscard, skippedJoker, ...dealCards],
+    phase: 'cutting',
+    roundStatus: 'cutting',
+  }
+
+  const dealt = dealPendingRound(cutting)
+
+  assert.equal(dealt.discardPile[0].card.id, initialDiscard.id)
+  assert.equal(dealt.discardPile[0].card.isJoker, false)
+  assert.equal(dealt.stock.at(-1).id, skippedJoker.id)
+  const allCards = [...dealt.stock, ...dealt.players.flatMap((player) => player.hand), dealt.discardPile[0].card]
+  assert.equal(allCards.length, 108)
+  assert.equal(new Set(allCards.map((card) => card.id)).size, 108)
+})
+
 test('next hand preserves scores, advances dealer once, stays pending, and Deal consumes fresh RNG', () => {
   let rngCalls = 0
   const rng = () => {
@@ -175,15 +202,28 @@ test('meld contracts enforce sizes, naturals, ace and duplicate run boundaries, 
     { type: 'run', cards: run('second', ['5', '6', '7', '8']) },
   ])
   assert.equal(sharedBoundary.valid, true)
+  const overlappingRuns = validateContract(3, [
+    { type: 'run', cards: run('overlap-first', ['2', '3', '4', '5']) },
+    { type: 'run', cards: run('overlap-second', ['4', '5', '6', '7']) },
+  ])
+  assert.equal(overlappingRuns.valid, true)
   const reusedPhysicalCard = run('reuse', ['2', '3', '4', '5'])
-  assert.equal(validateContract(3, [
+  const reusedPhysicalCardResult = validateContract(3, [
     { type: 'run', cards: reusedPhysicalCard },
     { type: 'run', cards: [reusedPhysicalCard[3], ...run('tail', ['6', '7', '8'])] },
-  ]).valid, false)
+  ])
+  assert.equal(reusedPhysicalCardResult.valid, false)
+  assert.match(reusedPhysicalCardResult.error, /distinct physical cards/)
   assert.equal(validateContract(3, [
     { type: 'run', cards: run('adjacent-a', ['2', '3', '4', '5']) },
     { type: 'run', cards: run('adjacent-b', ['6', '7', '8', '9']) },
   ]).valid, false)
+  const splitGroupResult = validateContract(1, [
+    { type: 'group', cards: group('split-a', '7') },
+    { type: 'group', cards: group('split-b', '7') },
+  ])
+  assert.equal(splitGroupResult.valid, false)
+  assert.equal(splitGroupResult.error, 'Groups of the same rank must be combined into one meld')
   assert.equal(validateContract(1, [{ type: 'group', cards: group('only', '4') }]).valid, false)
 
   const validContracts = {
@@ -198,6 +238,46 @@ test('meld contracts enforce sizes, naturals, ace and duplicate run boundaries, 
   for (let roundNumber = 1; roundNumber <= 7; roundNumber += 1) {
     assert.equal(validateContract(roundNumber, validContracts[roundNumber]).valid, true)
   }
+})
+
+test('partitionContract finds a valid round-one contract using all selected cards', () => {
+  const cards = [...group('partition-a', '3'), ...group('partition-b', '8')]
+  const partition = partitionContract(cards, ['group', 'group'], 1)
+
+  assert.deepEqual(partition.map((meld) => meld.cards.map((card) => card.id)), [
+    cards.slice(0, 3).map((card) => card.id),
+    cards.slice(3).map((card) => card.id),
+  ])
+})
+
+test('selectedContract enforces the round-seven full-hand rule and delegates its finder', () => {
+  const state = createRoundState({ roundNumber: 7, rng: fixedRng })
+  const user = state.players.find((player) => player.id === 'player')
+  const selectedIds = user.hand.map((card) => card.id)
+  let finderCall = null
+
+  assert.equal(selectedContract(state, selectedIds.slice(0, -1), () => []), null)
+
+  const contract = selectedContract(state, selectedIds, (...args) => {
+    finderCall = args
+    return [{ type: 'run', cardIds: selectedIds }]
+  })
+
+  assert.deepEqual(contract, [{ type: 'run', cardIds: selectedIds }])
+  assert.equal(finderCall[0], 7)
+  assert.deepEqual(finderCall[1], user.hand)
+  assert.deepEqual(finderCall[2], { requireResidualForNonRoundSeven: false })
+})
+
+test('possiblePlayTargets finds every meld that accepts the top discard', () => {
+  const state = createRoundState({ roundNumber: 1, rng: fixedRng })
+  const targetOwner = state.players[1]
+  targetOwner.melds = [{ type: 'group', cards: group('target', '7') }]
+  state.discardPile = [{ card: natural('play-target', '7', 'spades'), discardedBy: 'player', frozen: false }]
+
+  assert.deepEqual(possiblePlayTargets(state), [{ ownerId: targetOwner.id, meldIndex: 0 }])
+  state.discardPile[0].frozen = true
+  assert.deepEqual(possiblePlayTargets(state), [])
 })
 
 test('joker replacement is exact and reclaimed joker is reused in the same transition', () => {
@@ -275,6 +355,18 @@ test('turn transitions cover draws, discard takes, recycling, blocked rounds, op
   const discarded = discardCard(laidOff, active.id, 'discard')
   assert.equal(discarded.roundStatus, 'complete')
   assert.equal(discarded.roundResult.winnerId, active.id)
+
+  const layoffFinish = createRoundState({ roundNumber: 1, rng: fixedRng })
+  const layoffWinner = layoffFinish.players[layoffFinish.activePlayerIndex]
+  layoffFinish.phase = 'action'
+  layoffWinner.hasOpened = true
+  layoffWinner.hand = [natural('last-layoff', '5', 'spades')]
+  layoffFinish.players[0].melds = [{ type: 'group', cards: group('layoff-target', '5') }]
+  const finishedByLayoff = layOff(layoffFinish, layoffWinner.id, layoffFinish.players[0].id, 0, ['last-layoff'])
+  assert.equal(finishedByLayoff.roundStatus, 'complete')
+  assert.equal(finishedByLayoff.phase, 'complete')
+  assert.equal(finishedByLayoff.roundResult.winnerId, layoffWinner.id)
+  assert.equal(finishedByLayoff.players[layoffFinish.activePlayerIndex].hand.length, 0)
 
   const finalRound = createRoundState({ roundNumber: 7, rng: fixedRng })
   const finalist = finalRound.players[finalRound.activePlayerIndex]

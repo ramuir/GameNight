@@ -85,22 +85,7 @@ function App() {
     return activeIndex >= 0 ? activeIndex : 0
   }, [initialGame, playableGameKeys])
   const [homeChoiceIndex, setHomeChoiceIndex] = useState(initialChoiceIndex)
-  const activeGame = games[selectedGame]
   const isGameActive = launchableGameKeys.includes(selectedGame)
-  const activeGameTitle = selectedGame === 'none' ? 'Choose a game' : activeGame.title
-  const homeChoiceKey = playableGameKeys[homeChoiceIndex] ?? playableGameKeys[0]
-  const homeChoice = games[homeChoiceKey]
-
-  useEffect(() => {
-    if (!isGameActive) {
-      return
-    }
-
-    const activeIndex = playableGameKeys.findIndex((gameKey) => gameKey === selectedGame)
-    if (activeIndex >= 0) {
-      setHomeChoiceIndex(activeIndex)
-    }
-  }, [isGameActive, playableGameKeys, selectedGame])
 
   useEffect(() => {
     if (!isGameDropdownOpen) {
@@ -147,12 +132,23 @@ function App() {
   }).filter(Boolean)
 
   return (
-    <div className={`app-shell${isGameActive ? ' app-shell-game' : ' app-shell-home'}`}>
+    <div
+      className={`app-shell${isGameActive ? ' app-shell-game' : ' app-shell-home'}`}
+      data-game={isGameActive ? selectedGame : undefined}
+    >
       {isGameActive ? (
         <header className="app-header app-header-game">
           <div className="title-block">
             <p className="eyebrow">GameNight</p>
-            <h1 className="app-title">{activeGameTitle}</h1>
+            <h1 className="app-title">
+              <button
+                type="button"
+                className="app-title-home-link"
+                onClick={() => setSelectedGame('none')}
+              >
+                Game Night
+              </button>
+            </h1>
           </div>
 
           <div className="selector-panel selector-panel-game">
@@ -164,6 +160,10 @@ function App() {
               isOpen={isGameDropdownOpen}
               onToggle={() => setIsGameDropdownOpen((current) => !current)}
               onSelect={(nextGame) => {
+                const nextIndex = playableGameKeys.findIndex((gameKey) => gameKey === nextGame)
+                if (nextIndex >= 0) {
+                  setHomeChoiceIndex(nextIndex)
+                }
                 setSelectedGame(nextGame)
                 setIsGameDropdownOpen(false)
               }}

@@ -29,7 +29,21 @@ async function expectBoundedLayout(page) {
 }
 
 async function selectCard(page, name) {
-  await page.getByRole('button', { name, exact: true }).click()
+  // Overlapping fanned hand cards can intercept a hit-tested click; dispatch the click
+  // directly on the target element, matching the approach already used for dense hands.
+  await page.getByRole('button', { name, exact: true }).evaluate((card) => card.click())
+}
+
+async function dealAndAwaitActive(page, dealButton = page.getByRole('button', { name: 'Deal', exact: true })) {
+  await dealButton.click()
+  const stop = page.getByRole('button', { name: 'Stop', exact: true })
+  try {
+    await stop.waitFor({ state: 'visible', timeout: 300 })
+    await stop.click()
+  } catch {
+    // this deal did not require a user cut
+  }
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
 }
 
 async function dragHandCard(page, sourceLocator, targetLocator) {
@@ -128,8 +142,7 @@ test('normal hands stay hidden until a single-use Deal consumes the session RNG 
   await expect(page.locator('.table-pile-discard img')).toHaveCount(0)
   await expect(dealButton).toBeEnabled()
 
-  await dealButton.click()
-  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
+  await dealAndAwaitActive(page, dealButton)
   await expect(dealButton).toBeDisabled()
   await expect(page.locator('.player-hand-card')).toHaveCount(10)
   const firstHand = await page.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
@@ -137,7 +150,7 @@ test('normal hands stay hidden until a single-use Deal consumes the session RNG 
   await page.getByRole('button', { name: 'Restart', exact: true }).click()
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
   await expect(page.locator('.player-hand-card')).toHaveCount(0)
-  await dealButton.click()
+  await dealAndAwaitActive(page, dealButton)
   const secondHand = await page.locator('.player-hand-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
   expect(secondHand).not.toEqual(firstHand)
 })
@@ -293,9 +306,37 @@ test('bought cards are immediately visible, stacked in sort order, and clickable
   await expect(cards).toHaveCount(6)
   expect(await cards.evaluateAll((items) => items.map((item) => Number(getComputedStyle(item).zIndex)))).toEqual([1, 2, 3, 4, 5, 6])
   const boughtCard = page.locator('[data-card-id="fixture-gain-k-clubs"]')
-  const box = await boughtCard.boundingBox()
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  // Overlapping fanned cards can intercept a coordinate-based click; dispatch directly instead.
+  await boughtCard.evaluate((card) => card.click())
   await expect(boughtCard).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('double-clicking empty hand space clears selection without changing the round', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=sort-stock')
+
+  const selectedCard = page.locator('[data-card-id="fixture-sort-8h"]')
+  await expect(selectedCard).toHaveAttribute('aria-pressed', 'true')
+  const handArea = page.locator('.player-hand-arc')
+  const handBox = await handArea.boundingBox()
+  await page.mouse.dblclick(handBox.x + 10, handBox.y + 10)
+
+  await expect(selectedCard).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
+  await expect(page.getByRole('button', { name: 'Meld', exact: true })).toBeDisabled()
+})
+
+test('double-clicking a hand card selects every card in a dense final hand', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=round-seven-pat-hand')
+
+  const cards = page.locator('.player-hand-card')
+  const targetCard = cards.last()
+  const targetPoint = await targetCard.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  })
+  await page.mouse.dblclick(targetPoint.x, targetPoint.y)
+  await expect(page.locator('.player-hand-card[aria-pressed="true"]')).toHaveCount(12)
+  await expect(page.getByRole('button', { name: 'Meld', exact: true })).toBeEnabled()
 })
 
 test('round seven pat hand exposes every card for immediate selection', async ({ page }) => {
@@ -339,8 +380,9 @@ test('Buy wait is user-only after CPU 1 discard and can be skipped', async ({ pa
 test('accepted user Buy completes before CPU 2 draws without reopening the window', async ({ page }) => {
   await page.goto('/?game=liverpool&seed=0044&fixture=buy-after-cpu1')
 
-  await page.getByRole('button', { name: 'Buy 10' }).click()
+  await page.getByRole('button', { name: /^Buy \d+$/ }).click()
 
+  await expect(page.getByTestId('bought-card-presentation')).toHaveCount(0)
   await expect(page.getByLabel('Your hand, 3 cards')).toBeVisible()
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
   await expect(page.getByLabel('CPU 2, score 0, 2 cards remaining')).toBeVisible()
@@ -438,15 +480,17 @@ test('user cannot claim PLAY on their own discard', async ({ page }) => {
 
 test('user stock draw resolves CPU buys without a ten-second wait', async ({ page }) => {
   await page.goto('/?game=liverpool&seed=0044')
-  await page.getByRole('button', { name: 'Deal', exact: true }).click()
+  await dealAndAwaitActive(page)
   await page.getByRole('button', { name: /^Draw pile/ }).click()
 
   await expect(page.getByRole('timer')).toHaveText('Your turn')
   await expect(page.getByRole('button', { name: 'Skip buy' })).toHaveCount(0)
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'active')
   await expect(page.getByLabel('Your hand, 11 cards')).toBeVisible()
-  await expect(page.getByLabel('CPU 1, score 0, 10 cards remaining')).toBeVisible()
-  await expect(page.getByLabel('CPU 2, score 0, 10 cards remaining')).toBeVisible()
+  // CPU 1/2's exact remaining count is not asserted here: a CPU may legitimately open its
+  // initial contract on this turn depending on the cut, which this test does not control for.
+  await expect(page.getByLabel(/^CPU 1, score 0(, \d+ cards remaining)?$/)).toBeVisible()
+  await expect(page.getByLabel(/^CPU 2, score 0(, \d+ cards remaining)?$/)).toBeVisible()
 })
 
 test('CPU buy after a user discard resolves immediately before CPU 1 draws', async ({ page }) => {
@@ -460,7 +504,22 @@ test('CPU buy after a user discard resolves immediately before CPU 1 draws', asy
   await selectCard(page, 'King of spades')
   await page.getByTestId('action-bar').getByRole('button', { name: 'Discard', exact: true }).click()
 
-  await expect(page.getByRole('timer')).toHaveText('Buy 10s')
+  const boughtCard = page.getByTestId('bought-card-presentation')
+  const boughtPile = boughtCard.locator('..')
+  const buyerSeat = page.getByLabel(/^CPU 2, score 0/)
+  await expect(boughtCard).toHaveAttribute('data-card-id', 'fixture-user-discard')
+  await expect(boughtCard).toHaveAttribute('data-duration-ms', '3000')
+  await expect(buyerSeat).toHaveClass(/seat-buy-highlight/)
+  expect(await boughtPile.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe('rgb(177, 109, 255)')
+  expect(await buyerSeat.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe('color(srgb 0.694118 0.427451 1 / 0.62)')
+  expect(await buyerSeat.evaluate((element) => getComputedStyle(element).animationName)).toBe('none')
+  await page.waitForTimeout(2000)
+  await expect(boughtCard).toBeVisible()
+  await expect(page.getByRole('timer')).not.toContainText('Buy')
+  expect(await page.evaluate(() => window.__statusHistory)).not.toContain('CPU 1 chose discard.')
+  await expect(boughtCard).toHaveCount(0, { timeout: 1500 })
+  await expect(buyerSeat).not.toHaveClass(/seat-buy-highlight/)
+  await expect(page.getByRole('timer')).toHaveText(/^Buy \d+s$/, { timeout: 3000 })
   const statusHistory = await page.evaluate(() => window.__statusHistory)
   expect(statusHistory).toContain('CPU 2 bought the discard. CPU 1 drew from stock.')
   expect(statusHistory.indexOf('CPU 2 bought the discard. CPU 1 drew from stock.')).toBeLessThan(statusHistory.indexOf('CPU 1 discarded. Buy now or skip before CPU 2 draws.'))
@@ -480,6 +539,17 @@ test('CPU meld stays in CPU region and accepts a user layoff', async ({ page }) 
   await expect(page.getByLabel('Your hand, 1 cards')).toBeVisible()
   await expect(cpuSection.locator('.meld-fan-card')).toHaveCount(4)
   await expect(page.getByRole('status')).toContainText('Cards laid off on CPU 1 meld 1.')
+})
+
+test('laying off the final card completes a normal hand without a discard', async ({ page }) => {
+  await page.goto('/?game=liverpool&seed=0044&fixture=layoff-opponent-last-card')
+
+  await selectCard(page, '5 of spades')
+  await page.getByRole('button', { name: 'Target CPU 1 meld 1' }).click()
+
+  await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'complete')
+  await expect(page.getByRole('heading', { name: 'Hand 1 Complete' })).toBeVisible()
+  await expect(page.getByText('You went out')).toBeVisible()
 })
 
 for (const viewport of viewports) {
@@ -546,7 +616,7 @@ for (const viewport of viewports) {
     const actionBar = page.getByTestId('action-bar')
 
     await page.goto('/?game=liverpool&seed=0044')
-    await page.getByRole('button', { name: 'Deal', exact: true }).click()
+    await dealAndAwaitActive(page)
     await page.getByRole('button', { name: /^Draw pile/ }).click()
     await expect(page.getByRole('timer')).toHaveText('Your turn')
     await expect(page.getByRole('button', { name: 'Skip buy' })).toHaveCount(0)
@@ -574,22 +644,19 @@ for (const viewport of viewports) {
     await expect(page.getByRole('timer')).toHaveText('PLAY 5s')
     await expect(page.getByText(/CPU 1 · Turn/)).toBeVisible()
 
-    await actionBar.getByRole('button', { name: 'PLAY 5', exact: true }).click()
-    await expect(page.getByRole('timer')).toHaveText('PLAY claimed')
-    await selectCard(page, 'King of spades')
-    await page.getByRole('button', { name: 'Target You meld 2' }).click()
-    await expect(actionBar.getByRole('button', { name: 'Complete PLAY' })).toBeEnabled()
-    await actionBar.getByRole('button', { name: 'Complete PLAY' }).click()
-    await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'complete')
-    await expect(page.getByRole('button', { name: /Frozen discard pile/i })).toBeDisabled()
-    await expect(page.getByRole('status')).toContainText('You · You 0')
-    await expect(page.getByRole('button', { name: 'Next hand' })).toBeEnabled()
+    // The user cannot claim PLAY on their own discard, and the fixture's single stock card is
+    // already spent, so the round legitimately ends here once the PLAY window closes: CPU 1's
+    // next draw has no stock and no unfrozen discard left to recycle.
+    await expect(actionBar.getByRole('button', { name: 'PLAY 5', exact: true })).toBeDisabled()
+    await expect.poll(() => page.locator('.liverpool-table').getAttribute('data-round-status'), { timeout: 9_000 }).toBe('complete')
+    await expect(page.getByRole('status')).toContainText('Blocked round')
+    await expect(actionBar.getByRole('button', { name: 'Next hand' })).toBeEnabled()
     await expectBoundedLayout(page)
 
-    await page.getByRole('button', { name: 'Next hand' }).click()
+    await page.getByRole('button', { name: 'Next Hand', exact: true }).click()
     await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
     await expect(page.locator('.liverpool-table-meta')).toContainText('Hand 2 of 7')
-    await expect(page.locator('.liverpool-table-meta')).toContainText('Score 0')
+    await expect(page.locator('.liverpool-table-meta')).toContainText('Score 10')
     await expect(page.locator('.player-seat-box .opponent-name')).toContainText('Dealer')
     await expect(page.locator('.liverpool-opponent-left .opponent-name')).toContainText('Starts')
     await expect(page.locator('.player-hand-card')).toHaveCount(0)

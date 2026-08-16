@@ -165,7 +165,11 @@ export function dealPendingRound(state, rng = Math.random, cutCount = 0) {
       player.hand.push(deck.pop())
     }
   }
-  const initialDiscard = deck.pop()
+  const initialDiscardIndex = deck.findLastIndex((card) => !card.isJoker)
+  if (initialDiscardIndex === -1) {
+    throw new Error('Cannot start a Liverpool round without a natural discard')
+  }
+  const [initialDiscard] = deck.splice(initialDiscardIndex, 1)
   next.stock = deck
   next.discardPile = [{ card: initialDiscard, discardedBy: null, frozen: false }]
   next.phase = 'draw'
@@ -271,17 +275,76 @@ export function validateContract(roundNumber, melds) {
   const invalid = validated.find((result) => !result.valid)
   if (invalid) return invalid
   const normalizedMelds = validated.map((result) => result.meld)
+  const groupRanks = normalizedMelds
+    .filter((meld) => meld.type === 'group')
+    .map((meld) => meld.cards.find((card) => !card.isJoker).rank)
+  if (new Set(groupRanks).size !== groupRanks.length) {
+    return fail('Groups of the same rank must be combined into one meld')
+  }
   const runsBySuit = Object.groupBy(normalizedMelds.filter((meld) => meld.type === 'run'), (meld) => meld.suit)
   for (const runs of Object.values(runsBySuit)) {
     const ordered = [...runs].sort((left, right) => left.start - right.start)
     for (let index = 1; index < ordered.length; index += 1) {
       const distance = ordered[index].start - ordered[index - 1].end
-      if (distance !== 0 && distance < 2) {
-        return fail('Same-suit runs need a missing rank or distinct cards at one shared boundary')
+      if (distance === 1) {
+        return fail('Same-suit runs must overlap with distinct cards or have a missing rank between them')
       }
     }
   }
   return { valid: true, melds: normalizedMelds }
+}
+
+export function partitionContract(cards, contract, roundNumber) {
+  function search(remaining, contractIndex, melds) {
+    if (contractIndex === contract.length) {
+      if (remaining.length > 0) return null
+      return validateContract(roundNumber, melds).valid ? melds : null
+    }
+    const type = contract[contractIndex]
+    const minimum = type === 'group' ? 3 : 4
+    const limit = 2 ** remaining.length
+    for (let mask = 1; mask < limit; mask += 1) {
+      const selected = remaining.filter((_, index) => mask & (1 << index))
+      if (selected.length < minimum) continue
+      const rest = remaining.filter((_, index) => !(mask & (1 << index)))
+      const found = search(rest, contractIndex + 1, [...melds, { type, cards: selected }])
+      if (found) return found
+    }
+    return null
+  }
+  return search(cards, 0, [])
+}
+
+export function selectedContract(state, selectedIds, findRoundSevenContract) {
+  const user = state.players.find((player) => player.id === 'player')
+  if (!user || user.hasOpened || selectedIds.length === 0) return null
+  if (state.roundNumber === 7 && selectedIds.length !== user.hand.length) return null
+  const cards = selectedIds.map((id) => user.hand.find((card) => card.id === id)).filter(Boolean)
+  if (state.roundNumber === 7) {
+    return typeof findRoundSevenContract === 'function'
+      ? findRoundSevenContract(state.roundNumber, cards, { requireResidualForNonRoundSeven: false })
+      : null
+  }
+  const contract = ROUND_CONTRACTS[state.roundNumber]
+  for (const types of [contract, [...contract].reverse()]) {
+    const melds = partitionContract(cards, types, state.roundNumber)
+    if (melds) return melds.map((meld) => ({ type: meld.type, cardIds: meld.cards.map((card) => card.id) }))
+  }
+  return null
+}
+
+export function possiblePlayTargets(state) {
+  const topDiscard = state.discardPile.at(-1)
+  if (state.roundStatus !== 'active' || !topDiscard || topDiscard.frozen) return []
+  const targets = []
+  for (const owner of state.players) {
+    owner.melds.forEach((meld, meldIndex) => {
+      if (validateMeld([...meld.cards, topDiscard.card], meld.type).valid) {
+        targets.push({ ownerId: owner.id, meldIndex })
+      }
+    })
+  }
+  return targets
 }
 
 export function drawFromStock(state, playerId, rng = Math.random) {
@@ -333,7 +396,7 @@ export function meldInitialContract(state, playerId, melds) {
   next.players[playerIndex].hand = removeCards(next.players[playerIndex].hand, selectedIds)
   next.players[playerIndex].melds = result.melds
   next.players[playerIndex].hasOpened = true
-  if (next.roundNumber === 7 && next.players[playerIndex].hand.length === 0) {
+  if (next.players[playerIndex].hand.length === 0) {
     return completeRound(next, playerId)
   }
   return next
@@ -352,7 +415,7 @@ export function layOff(state, playerId, ownerId, meldIndex, cardIds) {
   const next = cloneState(state)
   next.players[playerIndex].hand = removeCards(next.players[playerIndex].hand, cardIds)
   next.players[ownerIndex].melds[meldIndex] = result.meld
-  if (next.roundNumber === 7 && next.players[playerIndex].hand.length === 0) {
+  if (next.players[playerIndex].hand.length === 0) {
     return completeRound(next, playerId)
   }
   return next
@@ -387,7 +450,7 @@ export function replaceJoker(state, playerId, ownerId, meldIndex, jokerId, repla
   next.players[playerIndex].hand = removeCards(next.players[playerIndex].hand, [replacementCardId, ...reuse.cardIds])
   next.players[ownerIndex].melds[meldIndex] = targetResult.meld
   next.players[playerIndex].melds.push(reuseResult.meld)
-  if (next.roundNumber === 7 && next.players[playerIndex].hand.length === 0) {
+  if (next.players[playerIndex].hand.length === 0) {
     return completeRound(next, playerId)
   }
   return next

@@ -1,7 +1,6 @@
 export const BOARD_ROWS = 6
 export const BOARD_COLUMNS = 7
 
-const PLAYERS = ['red', 'green']
 const PLAYER_TO_TURN = {
   red: 'green',
   green: 'red',
@@ -19,37 +18,6 @@ function getLowestEmptyRow(board, column) {
   }
 
   return -1
-}
-
-function checkDirection(board, row, column, rowDelta, columnDelta, player) {
-  let count = 1
-  let nextRow = row + rowDelta
-  let nextColumn = column + columnDelta
-
-  while (nextRow >= 0 && nextRow < BOARD_ROWS && nextColumn >= 0 && nextColumn < BOARD_COLUMNS) {
-    if (board[nextRow][nextColumn] !== player) {
-      break
-    }
-
-    count += 1
-    nextRow += rowDelta
-    nextColumn += columnDelta
-  }
-
-  let reverseRow = row - rowDelta
-  let reverseColumn = column - columnDelta
-
-  while (reverseRow >= 0 && reverseRow < BOARD_ROWS && reverseColumn >= 0 && reverseColumn < BOARD_COLUMNS) {
-    if (board[reverseRow][reverseColumn] !== player) {
-      break
-    }
-
-    count += 1
-    reverseRow -= rowDelta
-    reverseColumn -= columnDelta
-  }
-
-  return count >= 4
 }
 
 function getWinningLine(board, row, column, player) {
