@@ -5,6 +5,30 @@
   padding-right: clamp(1.35rem, 2vw, 2rem);
 }
 
+/* Kings neon identity. Everything a variant can change is declared here, on the app
+   shell, so the header sign and the game surface light up together. The shell below
+   only reads these; re-declaring them there would shadow any variant override. */
+.app-shell-game[data-game='kingsInTheCorner'] {
+  --game-accent: var(--cyan-400);
+  --game-accent-rgb: 48, 229, 255;
+  --kings-accent: var(--game-accent);
+  --kings-accent-rgb: var(--game-accent-rgb);
+  --kings-accent-2: var(--rose-400);
+  --kings-accent-2-rgb: 255, 79, 149;
+  --kings-shell-wash:
+    radial-gradient(circle at 12% 8%, rgba(var(--kings-accent-rgb), 0.12), transparent 34%),
+    radial-gradient(circle at 88% 14%, rgba(var(--kings-accent-2-rgb), 0.12), transparent 30%);
+  --kings-shell-base: linear-gradient(180deg, rgba(6, 15, 28, 0.98), rgba(5, 10, 20, 0.99));
+  --kings-shell-frame: 0 22px 52px rgba(0, 0, 0, 0.34);
+  --kings-scene: none;
+  --kings-scene-opacity: 1;
+  --kings-tube-border: rgba(var(--kings-accent-rgb), 0.82);
+  --kings-tube-glow:
+    0 0 9px rgba(var(--kings-accent-rgb), 0.5),
+    0 0 24px rgba(var(--kings-accent-rgb), 0.26),
+    inset 0 0 12px rgba(var(--kings-accent-rgb), 0.2);
+}
+
 .kings-game-shell {
   --card-width: clamp(78px, min(6vw, 11vh), 98px);
   --player-card-width: clamp(56px, min(3.9vw, 6.9vh), 70px);
@@ -14,16 +38,15 @@
   --pile-height: var(--card-height);
   --card-radius: 8px;
   --control-height: 44px;
-  background:
-    radial-gradient(circle at 12% 8%, rgba(48, 229, 255, 0.12), transparent 34%),
-    radial-gradient(circle at 88% 14%, rgba(255, 79, 149, 0.12), transparent 30%),
-    linear-gradient(180deg, rgba(6, 15, 28, 0.98), rgba(5, 10, 20, 0.99));
-  border: 1px solid rgba(48, 229, 255, 0.18);
+  position: relative;
+  isolation: isolate;
+  background: var(--kings-shell-wash), var(--kings-shell-base);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.18);
   border-radius: 24px;
   padding: 16px;
   box-shadow:
-    0 22px 52px rgba(0, 0, 0, 0.34),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.08);
+    var(--kings-shell-frame),
+    inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.08);
   max-width: 100%;
   width: min(100%, 860px);
   box-sizing: border-box;
@@ -34,6 +57,36 @@
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 14px;
+}
+
+.kings-game-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 24px;
+  background: var(--kings-scene);
+  opacity: var(--kings-scene-opacity);
+  pointer-events: none;
+}
+
+/* Optional receding floor plane; variants that do not set --kings-floor render nothing. */
+.kings-game-shell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46%;
+  z-index: -1;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
+  background: var(--kings-floor, none);
+  transform: perspective(420px) rotateX(64deg);
+  transform-origin: bottom center;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 38%);
+  mask-image: linear-gradient(180deg, transparent, #000 38%);
+  pointer-events: none;
 }
 
 .kings-region {
@@ -51,7 +104,7 @@
   padding: 5px 8px;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(7, 17, 31, 0.94), rgba(6, 13, 24, 0.94));
-  border: 1px solid rgba(48, 229, 255, 0.14);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14);
 }
 
 .kings-region-operations > * {
@@ -66,9 +119,13 @@
   justify-content: center;
   padding: 3px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(48, 229, 255, 0.42);
-  background: rgba(48, 229, 255, 0.14);
-  color: var(--cyan-400);
+  border: 1.5px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.75);
+  background: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.08);
+  color: var(--kings-accent, var(--cyan-400));
+  box-shadow:
+    0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.4),
+    inset 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.16);
+  text-shadow: 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.6);
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -110,31 +167,37 @@
   padding: 3px 8px;
   box-sizing: border-box;
   border-radius: 999px;
-  border: 1px solid rgba(48, 229, 255, 0.42);
-  background: rgba(48, 229, 255, 0.14);
-  color: var(--cyan-400);
+  border: 1.5px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.75);
+  background: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.08);
+  color: var(--kings-accent, var(--cyan-400));
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(48, 229, 255, 0.05);
+  text-shadow: 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.6);
+  box-shadow:
+    0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.4),
+    inset 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.16);
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .control-pill-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(48, 229, 255, 0.64);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+  border-color: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.95);
+  box-shadow:
+    0 0 14px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.6),
+    0 0 30px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.3),
+    inset 0 0 10px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.2);
 }
 
 .control-pill-button-active {
-  border-color: rgba(48, 229, 255, 0.58);
-  background: rgba(48, 229, 255, 0.18);
-  color: var(--cyan-400);
+  border-color: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.58);
+  background: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.18);
+  color: var(--kings-accent, var(--cyan-400));
   box-shadow:
-    0 0 18px rgba(48, 229, 255, 0.14),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.06);
+    0 0 18px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14),
+    inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.06);
 }
 
 .control-dropdown-toggle,
@@ -149,7 +212,7 @@
 .player-card,
 .rules-toggle,
 .action-button {
-  border: 1px solid rgba(48, 229, 255, 0.3);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.3);
   background: linear-gradient(180deg, rgba(9, 18, 30, 0.92), rgba(4, 10, 19, 0.92));
 }
 
@@ -177,16 +240,16 @@
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
   box-shadow:
-    0 0 18px rgba(48, 229, 255, 0.14),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.08);
+    0 0 18px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14),
+    inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.08);
 }
 
 .control-dropdown-open .control-dropdown-toggle {
-  border-color: rgba(48, 229, 255, 0.68);
+  border-color: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.68);
   box-shadow:
-    0 0 24px rgba(48, 229, 255, 0.24),
+    0 0 24px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.24),
     0 8px 24px rgba(15, 23, 42, 0.34),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.14);
+    inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14);
 }
 
 .control-dropdown-menu {
@@ -199,11 +262,11 @@
   right: 0;
   z-index: 20;
   border-radius: 14px;
-  border: 1px solid rgba(48, 229, 255, 0.42);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.42);
   background: linear-gradient(180deg, rgba(6, 16, 29, 0.98), rgba(3, 9, 18, 0.98));
   box-shadow:
     0 18px 36px rgba(0, 0, 0, 0.42),
-    0 0 26px rgba(48, 229, 255, 0.14);
+    0 0 26px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14);
   display: grid;
   gap: 6px;
 }
@@ -217,7 +280,7 @@
   min-height: 34px;
   padding: 7px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(48, 229, 255, 0.18);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.18);
   background: linear-gradient(180deg, rgba(12, 24, 40, 0.92), rgba(6, 12, 24, 0.94));
   color: var(--paper-100);
   font-size: 0.62rem;
@@ -231,11 +294,11 @@
 
 .control-dropdown-option:hover,
 .control-dropdown-option-active {
-  border-color: rgba(48, 229, 255, 0.7);
-  color: var(--cyan-400);
+  border-color: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.7);
+  color: var(--kings-accent, var(--cyan-400));
   box-shadow:
-    0 0 18px rgba(48, 229, 255, 0.18),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.12);
+    0 0 18px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.18),
+    inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.12);
   transform: translateY(-1px);
 }
 
@@ -249,7 +312,7 @@
   color: var(--paper-100);
   text-align: center;
   cursor: pointer;
-  box-shadow: 0 0 18px rgba(255, 79, 149, 0.14);
+  box-shadow: 0 0 18px rgba(var(--kings-accent-2-rgb, 255, 79, 149), 0.14);
 }
 
 .rules-toggle-inline {
@@ -287,19 +350,33 @@
 }
 
 .action-button {
+  --btn-rgb: var(--kings-accent-rgb, 48, 229, 255);
   min-height: var(--control-height);
   padding: 8px 6px;
   font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--paper-100);
+  color: rgb(var(--btn-rgb));
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
-  box-shadow: 0 0 20px rgba(48, 229, 255, 0.16);
+  border: 2px solid rgba(var(--btn-rgb), 0.85);
+  background: rgba(4, 10, 20, 0.55);
+  text-shadow: 0 0 9px rgba(var(--btn-rgb), 0.7);
+  box-shadow:
+    0 0 10px rgba(var(--btn-rgb), 0.5),
+    0 0 26px rgba(var(--btn-rgb), 0.24),
+    inset 0 0 12px rgba(var(--btn-rgb), 0.18);
 }
 
-.action-button:hover:not(:disabled),
+.action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 16px rgba(var(--btn-rgb), 0.75),
+    0 0 40px rgba(var(--btn-rgb), 0.4),
+    inset 0 0 16px rgba(var(--btn-rgb), 0.26);
+}
+
 .rules-toggle:hover,
 .control-dropdown-toggle:hover {
   transform: translateY(-1px);
@@ -307,32 +384,26 @@
 }
 
 .action-button:disabled {
-  opacity: 0.55;
+  opacity: 0.4;
   cursor: not-allowed;
   box-shadow: none;
+  text-shadow: none;
 }
 
 .action-button-cyan {
-  border-color: rgba(48, 229, 255, 0.74);
-  color: var(--cyan-400);
+  --btn-rgb: 48, 229, 255;
 }
 
 .action-button-magenta {
-  border-color: rgba(255, 79, 149, 0.74);
-  color: var(--rose-400);
-  box-shadow: 0 0 20px rgba(255, 79, 149, 0.18);
+  --btn-rgb: 255, 79, 149;
 }
 
 .action-button-green {
-  border-color: rgba(124, 255, 79, 0.72);
-  color: #7cff4f;
-  box-shadow: 0 0 20px rgba(124, 255, 79, 0.16);
+  --btn-rgb: 124, 255, 79;
 }
 
 .action-button-amber {
-  border-color: rgba(229, 188, 116, 0.72);
-  color: var(--amber-300);
-  box-shadow: 0 0 20px rgba(229, 188, 116, 0.16);
+  --btn-rgb: 229, 188, 116;
 }
 
 .status-bar {
@@ -346,9 +417,13 @@
   display: inline-flex;
   padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(48, 229, 255, 0.12);
-  color: var(--cyan-400);
-  border: 1px solid rgba(48, 229, 255, 0.24);
+  background: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.08);
+  color: var(--kings-accent, var(--cyan-400));
+  border: 1.5px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.7);
+  box-shadow:
+    0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.36),
+    inset 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.14);
+  text-shadow: 0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.55);
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -499,9 +574,9 @@
   inset: -24px;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at center, rgba(48, 229, 255, 0.2), transparent 62%),
-    radial-gradient(circle at 20% 75%, rgba(255, 79, 149, 0.16), transparent 40%),
-    radial-gradient(circle at 80% 25%, rgba(48, 229, 255, 0.12), transparent 38%);
+    radial-gradient(ellipse at center, rgba(var(--kings-accent-rgb, 48, 229, 255), 0.2), transparent 62%),
+    radial-gradient(circle at 20% 75%, rgba(var(--kings-accent-2-rgb, 255, 79, 149), 0.16), transparent 40%),
+    radial-gradient(circle at 80% 25%, rgba(var(--kings-accent-rgb, 48, 229, 255), 0.12), transparent 38%);
   filter: blur(14px);
   opacity: 0.78;
   z-index: 0;
@@ -525,13 +600,10 @@
 .pile-slot {
   cursor: pointer;
   padding: 0;
-  border: 1px solid rgba(48, 229, 255, 0.34);
+  border: 2px solid var(--kings-tube-border);
   border-radius: var(--card-radius);
-  background:
-    linear-gradient(180deg, rgba(10, 20, 34, 0.58), rgba(5, 13, 24, 0.44));
-  box-shadow:
-    0 0 14px rgba(48, 229, 255, 0.18),
-    inset 0 0 0 1px rgba(48, 229, 255, 0.08);
+  background: rgba(4, 10, 20, 0.32);
+  box-shadow: var(--kings-tube-glow);
 }
 
 .pile-slot-droppable {
@@ -540,7 +612,10 @@
 
 .pile-slot-droppable:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(48, 229, 255, 0.28);
+  box-shadow:
+    0 0 16px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.8),
+    0 0 38px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.42),
+    inset 0 0 16px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.3);
 }
 
 .board-layout > .pile-slot:nth-child(1) {
@@ -581,18 +656,18 @@
 
 .pile-slot-active {
   border-radius: var(--card-radius);
-  outline: 2px solid var(--rose-400);
+  outline: 2px solid var(--kings-accent-2, var(--rose-400));
   outline-offset: 0;
-  background: rgba(255, 79, 149, 0.12);
-  box-shadow: 0 0 16px rgba(255, 79, 149, 0.2);
+  background: rgba(var(--kings-accent-2-rgb, 255, 79, 149), 0.12);
+  box-shadow: 0 0 16px rgba(var(--kings-accent-2-rgb, 255, 79, 149), 0.2);
 }
 
 .pile-slot-source {
   border-radius: var(--card-radius);
-  outline: 2px solid var(--cyan-400);
+  outline: 2px solid var(--kings-accent, var(--cyan-400));
   outline-offset: 0;
-  background: rgba(48, 229, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(48, 229, 255, 0.25);
+  background: rgba(var(--kings-accent-rgb, 48, 229, 255), 0.12);
+  box-shadow: inset 0 0 0 1px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.25);
 }
 
 .pile-placeholder {
@@ -601,14 +676,15 @@
 
 .deck-card {
   padding: 2px;
-  border: 1px solid rgba(48, 229, 255, 0.24);
+  border: 2px solid var(--kings-tube-border);
   border-radius: var(--card-radius);
   align-items: center;
   justify-content: center;
   gap: 4px;
   background:
-    radial-gradient(circle at 50% 30%, rgba(48, 229, 255, 0.18), transparent 58%),
-    linear-gradient(180deg, rgba(9, 23, 32, 0.52), rgba(12, 18, 48, 0.3));
+    radial-gradient(circle at 50% 30%, rgba(var(--kings-accent-rgb, 48, 229, 255), 0.18), transparent 58%),
+    rgba(4, 10, 20, 0.32);
+  box-shadow: var(--kings-tube-glow);
 }
 
 .deck-count {
@@ -699,13 +775,14 @@
   height: var(--card-height);
   min-width: var(--card-width);
   border-radius: var(--card-radius);
-  border: 1px solid rgba(48, 229, 255, 0.56);
+  border: 2px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.9);
   background:
-    linear-gradient(135deg, rgba(10, 18, 62, 0.98), rgba(30, 16, 79, 0.98)),
-    repeating-linear-gradient(45deg, rgba(48, 229, 255, 0.16) 0 5px, transparent 5px 12px);
+    linear-gradient(135deg, rgba(10, 18, 62, 0.94), rgba(30, 16, 79, 0.94)),
+    repeating-linear-gradient(45deg, rgba(var(--kings-accent-rgb, 48, 229, 255), 0.16) 0 5px, transparent 5px 12px);
   box-shadow:
-    0 10px 22px rgba(15, 23, 42, 0.16),
-    0 0 14px rgba(48, 229, 255, 0.18);
+    0 0 12px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.6),
+    0 0 30px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.3),
+    inset 0 0 14px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.24);
   overflow: hidden;
 }
 
@@ -714,14 +791,14 @@
   position: absolute;
   inset: 4px;
   border-radius: calc(var(--card-radius) - 2px);
-  border: 1px solid rgba(48, 229, 255, 0.2);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.44);
 }
 
 .playing-card-back-core {
   position: absolute;
   inset: 8px;
   border-radius: calc(var(--card-radius) - 3px);
-  border: 1px solid rgba(48, 229, 255, 0.1);
+  border: 1px solid rgba(var(--kings-accent-rgb, 48, 229, 255), 0.26);
 }
 
 .playing-card-back-mark {
@@ -731,14 +808,17 @@
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  color: var(--cyan-400);
-  text-shadow: 0 0 12px rgba(48, 229, 255, 0.35);
+  color: var(--kings-accent, var(--cyan-400));
+  text-shadow:
+    0 0 8px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.8),
+    0 0 20px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.45);
 }
 
 .playing-card-back-deck {
   box-shadow:
-    0 12px 26px rgba(15, 23, 42, 0.22),
-    0 0 18px rgba(48, 229, 255, 0.22);
+    0 0 16px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.7),
+    0 0 38px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.36),
+    inset 0 0 16px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.26);
 }
 
 .player-card {
@@ -758,14 +838,14 @@
 }
 
 .playing-card-selected {
-  outline: 3px solid var(--rose-400);
+  outline: 3px solid var(--kings-accent-2, var(--rose-400));
   outline-offset: 2px;
 }
 
 :is(.control-pill-button, .action-button, .rules-toggle, .pile-slot, .player-card):focus-visible {
-  outline: 3px solid var(--cyan-400);
+  outline: 3px solid var(--kings-accent, var(--cyan-400));
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(48, 229, 255, 0.2);
+  box-shadow: 0 0 0 4px rgba(var(--kings-accent-rgb, 48, 229, 255), 0.2);
 }
 
 .illegal-move-shake {

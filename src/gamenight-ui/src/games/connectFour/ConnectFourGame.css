@@ -256,10 +256,11 @@
 }
 
 .control-button {
+  --btn-rgb: var(--game-accent-rgb, 48, 229, 255);
   border-radius: 12px;
-  border: 1px solid rgba(48, 229, 255, 0.35);
-  background: linear-gradient(180deg, rgba(9, 18, 30, 0.92), rgba(4, 10, 19, 0.92));
-  color: var(--paper-100);
+  border: 2px solid rgba(var(--btn-rgb), 0.85);
+  background: rgba(4, 10, 20, 0.55);
+  color: rgb(var(--btn-rgb));
   min-height: 38px;
   padding: 5px 9px;
   font-size: 0.6rem;
@@ -267,6 +268,28 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   width: 100%;
+  cursor: pointer;
+  text-shadow: 0 0 9px rgba(var(--btn-rgb), 0.7);
+  box-shadow:
+    0 0 10px rgba(var(--btn-rgb), 0.5),
+    0 0 26px rgba(var(--btn-rgb), 0.24),
+    inset 0 0 12px rgba(var(--btn-rgb), 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.control-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 16px rgba(var(--btn-rgb), 0.75),
+    0 0 40px rgba(var(--btn-rgb), 0.4),
+    inset 0 0 16px rgba(var(--btn-rgb), 0.26);
+}
+
+.control-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .control-button-active {

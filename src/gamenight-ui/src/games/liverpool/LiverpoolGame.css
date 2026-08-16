@@ -888,6 +888,37 @@ button.meld-fan:hover .meld-fan-cards,
   box-shadow: 0 0 18px rgba(255, 79, 149, 0.28);
 }
 
+/* Neon tube treatment for the core table actions only: Discard, Buy and PLAY. */
+.table-action-group-center .table-action-primary {
+  --btn-rgb: var(--game-accent-rgb, 48, 229, 255);
+  border: 2px solid rgba(var(--btn-rgb), 0.85);
+  background: rgba(4, 10, 20, 0.55);
+  color: rgb(var(--btn-rgb));
+  text-shadow: 0 0 9px rgba(var(--btn-rgb), 0.7);
+  box-shadow:
+    0 0 10px rgba(var(--btn-rgb), 0.5),
+    0 0 26px rgba(var(--btn-rgb), 0.24),
+    inset 0 0 12px rgba(var(--btn-rgb), 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.table-action-group-center .table-action-play:not(:disabled) {
+  --btn-rgb: 255, 79, 149;
+}
+
+.table-action-group-center .table-action-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 16px rgba(var(--btn-rgb), 0.75),
+    0 0 40px rgba(var(--btn-rgb), 0.4),
+    inset 0 0 16px rgba(var(--btn-rgb), 0.26);
+}
+
+.table-action-group-center .table-action-primary:disabled {
+  box-shadow: none;
+  text-shadow: none;
+}
+
 .liverpool-mode-control select:focus-visible,
 .table-pile:focus-visible,
 .cut-stop:focus-visible,
