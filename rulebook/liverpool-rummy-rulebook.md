@@ -92,8 +92,9 @@ External sources are used only to clarify gaps.
 - Default minimum run length: 4 cards (adopted from standard Liverpool/Contract references).
 - Ace can be high or low; no wrap-around (K-A-2 is invalid).
 - Every new group or run must contain at least 1 natural card.
-- When a contract requires multiple runs, separate runs in the same suit must either have at least 1 missing rank between them or share a boundary rank using distinct duplicate physical cards.
-- Example: 2-3-4-5 and 5-6-7-8 are valid only when each run uses its own copy of the 5; one card cannot belong to both runs.
+- Multiple groups of the same rank must be combined into one group; they cannot be split to satisfy separate contract groups.
+- When a contract requires multiple runs, separate runs in the same suit must either have at least 1 missing rank between them or overlap using distinct duplicate physical cards for every shared rank.
+- Example: 2-3-4-5 and 4-5-6-7 are valid only when each run uses its own copies of the 4 and 5; one physical card cannot belong to both runs.
 
 ## Joker Rules
 - A joker may stand for a missing card in a group or run.
@@ -106,6 +107,11 @@ External sources are used only to clarify gaps.
 - Player must satisfy 3-run contract and go out without a discard.
 - Hand ends immediately when legal no-discard finish is completed.
 
+## Going Out
+- In hands 1-6, a player goes out after legally playing every card through an initial meld, layoffs, or a final discard.
+- No discard is required when a legal meld or layoff uses the player's final card.
+- Hand 7 remains a pat hand: all cards must form the 3-run contract and the player goes out without discarding.
+
 ## Confirmed Family Overrides Against Common Public Variants
 - Deal counts use 10 cards for rounds 1-4 and 12 for rounds 5-7.
 - Joker value is 50 points.
@@ -114,7 +120,7 @@ External sources are used only to clarify gaps.
 - PLAY call action exists and is part of this house rule set.
 
 ## Locked Clarifications
-- Separate same-suit runs require a missing rank unless they share a boundary rank using distinct duplicate physical cards.
+- Same-rank groups cannot be split, and overlapping same-suit runs require a distinct physical card in each run for every shared rank.
 - Jokers can be reclaimed only by exact legal replacement and must be reused immediately.
 - Buy windows open after every eligible non-frozen discard declined by the active player.
 - User priority applies first for PLAY claims, followed by seat order after the current player.
