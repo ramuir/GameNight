@@ -29,6 +29,11 @@ export function createDevFixtureState({ fixture, roundNumber, scores }) {
     })
     state.roundStatus = 'complete'
     state.phase = 'complete'
+    state.roundResult = {
+      winnerId: 'cpu-1',
+      scores: { player: 25, 'cpu-1': 0, 'cpu-2': 15 },
+      reason: 'went-out',
+    }
     return state
   }
   if (fixture === 'round-five-pending' && roundNumber === 1 && !scores) {
@@ -45,6 +50,11 @@ export function createDevFixtureState({ fixture, roundNumber, scores }) {
     state.roundStatus = 'game-complete'
     state.phase = 'complete'
     state.winnerId = USER_ID
+    state.roundResult = {
+      winnerId: 'cpu-2',
+      scores: { player: 10, 'cpu-1': 20, 'cpu-2': 0 },
+      reason: 'went-out',
+    }
     return state
   }
   if (['play-after-cpu1', 'play-after-cpu2'].includes(fixture) && roundNumber === 1 && !scores) {

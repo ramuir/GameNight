@@ -120,7 +120,7 @@ test('Restart game resets a completed game to a pending first hand', async ({ pa
   await expect(page.getByText('Hand 7 of 7')).toBeVisible()
   await expect(page.getByText('Score 75')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Restart game' }).click()
+  await page.getByRole('button', { name: 'Restart Game', exact: true }).click()
 
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
   await expect(page.getByText('Hand 1 of 7')).toBeVisible()
@@ -130,6 +130,22 @@ test('Restart game resets a completed game to a pending first hand', async ({ pa
   await expect(page.getByRole('timer')).toHaveText('Ready to deal')
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeEnabled()
   await expect(page.getByLabel('Your hand, 0 cards')).toBeVisible()
+})
+
+test('Liverpool score cards highlight the hand winner and reserve the badge for the match winner', async ({ page }) => {
+  await page.goto('/?game=liverpool&fixture=round-complete')
+
+  const handWinner = page.getByRole('row', { name: /CPU 1/ })
+  await expect(handWinner).toHaveClass(/liverpool-score-winner/)
+  await expect(handWinner.getByText('Winner')).toHaveCount(0)
+  await expect(page.locator('.liverpool-score-winner')).toHaveCount(1)
+
+  await page.goto('/?game=liverpool&fixture=game-complete')
+
+  const matchWinner = page.getByRole('row', { name: /You/ })
+  await expect(matchWinner).toHaveClass(/liverpool-score-winner/)
+  await expect(matchWinner.getByText('Winner')).toBeVisible()
+  await expect(page.locator('.liverpool-score-winner')).toHaveCount(1)
 })
 
 test('normal hands stay hidden until a single-use Deal consumes the session RNG stream', async ({ page }) => {
@@ -160,7 +176,7 @@ test('Replay enters the selected hand pending with its dealer before a fresh Dea
 
   await page.getByLabel('Play mode').selectOption('singleHand')
   await page.getByLabel('Hand number').selectOption('5')
-  await page.getByRole('button', { name: 'Replay hand' }).click()
+  await page.getByRole('button', { name: 'Replay Hand', exact: true }).click()
 
   await expect(page.locator('.liverpool-table')).toHaveAttribute('data-round-status', 'pending')
   await expect(page.getByText('Hand 5 of 7')).toBeVisible()

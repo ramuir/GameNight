@@ -114,6 +114,29 @@
   border-bottom: 0;
 }
 
+.liverpool-round-summary-table tbody .liverpool-score-winner {
+  background: linear-gradient(90deg, rgba(192, 123, 255, 0.22), rgba(48, 229, 255, 0.08));
+  box-shadow: inset 3px 0 #c07bff;
+}
+
+.liverpool-score-winner th {
+  color: #f3dcff;
+}
+
+.liverpool-final-winner-mark {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 5px;
+  border: 1px solid rgba(192, 123, 255, 0.62);
+  border-radius: 3px;
+  color: #f3dcff;
+  background: rgba(192, 123, 255, 0.14);
+  font-size: 0.46rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .liverpool-opponent,
 .liverpool-center,
 .liverpool-player {
