@@ -6,6 +6,11 @@ const DIFFICULTY_DEPTH = {
   medium: 1,
   hard: 5,
 }
+const DIFFICULTY_TARGETS = {
+  medium: 0.82,
+  hard: 0.28,
+}
+const NEAR_EQUAL_BAND_WIDTH = 100
 
 function getOpponent(player) {
   return player === 'red' ? 'green' : 'red'
@@ -223,7 +228,62 @@ function allowsImmediateOpponentWin(state, aiPlayer, column) {
   return false
 }
 
-export function chooseConnectFourMove(state, difficulty = 'medium') {
+/**
+ * Calculate the user's recent win rate from the record book's completionIds.
+ * Scans the last 10-15 games for the given game key and difficulty.
+ */
+function calculateRecentWinRate(recordBook, gameKey, difficulty) {
+  if (!recordBook?.completionIds || recordBook.completionIds.length === 0) {
+    return null
+  }
+
+  const RECENT_GAME_WINDOW = 15
+  const suffix = `-${gameKey}-`
+  const recentIds = recordBook.completionIds.filter((id) => id.includes(suffix) && id.endsWith(difficulty))
+  const lastN = recentIds.slice(-RECENT_GAME_WINDOW)
+
+  if (lastN.length === 0) {
+    return null
+  }
+
+  const wins = lastN.filter((id) => id.endsWith('-win')).length
+  return wins / lastN.length
+}
+
+/**
+ * Extract columns that fall within the near-equal band of the best score.
+ * Near-equal band is defined as within NEAR_EQUAL_BAND_WIDTH points of the best score.
+ */
+function getNearEqualColumns(columnScores) {
+  if (columnScores.length === 0) {
+    return []
+  }
+
+  const bestScore = Math.max(...columnScores.map((cs) => cs.score))
+  return columnScores
+    .filter((cs) => cs.score >= bestScore - NEAR_EQUAL_BAND_WIDTH)
+    .map((cs) => cs.column)
+}
+
+/**
+ * Determine if the AI should tighten move selection based on recent win rate.
+ * If the user is performing above the difficulty target, tighten to best move only.
+ */
+function shouldTightenAdaptively(recordBook, gameKey, difficulty) {
+  if (difficulty === 'easy') {
+    return false
+  }
+
+  const recentRate = calculateRecentWinRate(recordBook, gameKey, difficulty)
+  if (recentRate === null) {
+    return false
+  }
+
+  const target = DIFFICULTY_TARGETS[difficulty] ?? 0.5
+  return recentRate > target
+}
+
+export function chooseConnectFourMove(state, difficulty = 'medium', recordBook = null, gameKey = null) {
   const legalColumns = getLegalColumns(state)
   if (legalColumns.length === 0) {
     return null
@@ -251,8 +311,7 @@ export function chooseConnectFourMove(state, difficulty = 'medium') {
     ? orderedColumns.filter((column) => !allowsImmediateOpponentWin(state, aiPlayer, column))
     : orderedColumns
   const searchColumns = safeColumns.length > 0 ? safeColumns : orderedColumns
-  let bestMove = orderedColumns[0]
-  let bestScore = NEGATIVE_INFINITY
+  const columnScores = []
   const transpositionCache = new Map()
 
   const depth = DIFFICULTY_DEPTH[difficulty] ?? DIFFICULTY_DEPTH.medium
@@ -260,13 +319,34 @@ export function chooseConnectFourMove(state, difficulty = 'medium') {
   for (const column of searchColumns) {
     const nextState = applyMove(state, column)
     const score = minimax(nextState, depth - 1, NEGATIVE_INFINITY, POSITIVE_INFINITY, false, aiPlayer, transpositionCache)
-    if (score > bestScore) {
-      bestScore = score
-      bestMove = column
-    }
+    columnScores.push({ column, score })
   }
 
-  return bestMove
+  if (columnScores.length === 0) {
+    return orderedColumns[0] ?? null
+  }
+
+  // Determine if we should use the mix band or best move only
+  const tighten = shouldTightenAdaptively(recordBook, gameKey, difficulty)
+  let selectFrom = columnScores
+
+  if (!tighten && (difficulty === 'medium' || difficulty === 'hard')) {
+    // Use the near-equal band for Medium+Hard unless tightened
+    const nearEqualCols = getNearEqualColumns(columnScores)
+    selectFrom = columnScores.filter((cs) => nearEqualCols.includes(cs.column))
+  } else {
+    // Use only the best move(s) if tightened or if on Easy
+    const bestScore = Math.max(...columnScores.map((cs) => cs.score))
+    selectFrom = columnScores.filter((cs) => cs.score === bestScore)
+  }
+
+  if (selectFrom.length === 0) {
+    selectFrom = columnScores
+  }
+
+  // Pick randomly from the selection pool
+  const chosenIndex = Math.floor(Math.random() * selectFrom.length)
+  return selectFrom[chosenIndex].column
 }
 
 function minimax(state, depth, alpha, beta, isMaximizing, aiPlayer, transpositionCache) {
