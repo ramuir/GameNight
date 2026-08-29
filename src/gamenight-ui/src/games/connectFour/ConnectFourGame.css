@@ -1,8 +1,8 @@
 .game-shell-with-badge {
   position: relative;
-  width: min(100%, 860px);
+  width: min(100%, 1180px);
+  box-sizing: border-box;
   margin: 0 auto;
-  padding-right: clamp(1.35rem, 2vw, 2rem);
 }
 
 .connect-four-shell {
@@ -18,15 +18,18 @@
   padding: clamp(6px, 0.8vw, 10px) clamp(6px, 0.8vw, 10px) clamp(14px, 2vh, 20px);
   min-height: 0;
   height: 100%;
-  width: min(100%, 860px);
+  width: min(100%, 1180px);
+  box-sizing: border-box;
   margin: 0 auto;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
-    'status'
-    'board'
-    'controls';
+    '. status .'
+    '. board .'
+    '. controls .'
+    '. outcome .';
   gap: clamp(6px, 0.9vw, 10px);
 }
 
@@ -247,6 +250,7 @@
 }
 
 .connect-four-outcome {
+  grid-area: outcome;
   margin: 0;
   text-align: center;
   color: var(--paper-200);

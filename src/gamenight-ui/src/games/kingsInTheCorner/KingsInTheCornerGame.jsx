@@ -173,9 +173,9 @@ export function KingsInTheCornerGame() {
   const activeCard = draggedCard ?? draggedSourceCard ?? selectedCard ?? selectedSourceCard
   const activeSourcePile = draggedSourcePile ?? selectedSourcePile
   const legalTargetKeys = activeSourcePile
-    ? getLegalPileMoveTargetKeys(gameState.piles, activeSourcePile.area, activeSourcePile.key)
+    ? getLegalPileMoveTargetKeys(gameState.piles, activeSourcePile.area, activeSourcePile.key, gameState)
     : activeCard
-      ? getLegalTargetKeys(activeCard, gameState.piles)
+      ? getLegalTargetKeys(activeCard, gameState.piles, gameState)
       : []
   const roundOutcome =
     gameState.winner === 'player' ? 'win' : gameState.winner === 'computer' ? 'loss' : gameState.winner === 'draw' ? 'draw' : null
@@ -224,13 +224,29 @@ export function KingsInTheCornerGame() {
   }
 
   useEffect(() => {
+    function getOverlappedHandWidth(row) {
+      const styles = window.getComputedStyle(row)
+      const rowCount = styles.gridTemplateRows.split(' ').filter(Boolean).length || 1
+      const columnCount = Math.ceil(row.children.length / rowCount)
+
+      if (columnCount === 0) {
+        return 0
+      }
+
+      const columnWidth = Number.parseFloat(styles.gridAutoColumns) || 0
+      const columnGap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0
+      const firstCardWidth = row.children[0]?.getBoundingClientRect().width ?? columnWidth
+
+      return (columnCount - 1) * (columnWidth + columnGap) + firstCardWidth
+    }
+
     function measureHandOverflow() {
       const playerRow = playerHandRowRef.current
       const computerRow = computerHandRowRef.current
 
       const overflowTolerancePx = 4
-      const nextPlayerOverflow = Boolean(playerRow) && playerRow.scrollWidth - playerRow.clientWidth > overflowTolerancePx
-      const nextComputerOverflow = Boolean(computerRow) && computerRow.scrollWidth - computerRow.clientWidth > overflowTolerancePx
+      const nextPlayerOverflow = Boolean(playerRow) && getOverlappedHandWidth(playerRow) - playerRow.clientWidth > overflowTolerancePx
+      const nextComputerOverflow = Boolean(computerRow) && getOverlappedHandWidth(computerRow) - computerRow.clientWidth > overflowTolerancePx
 
       setIsPlayerHandOverflowing(nextPlayerOverflow)
       setIsComputerHandOverflowing(nextComputerOverflow)
@@ -456,7 +472,7 @@ export function KingsInTheCornerGame() {
   return (
     <div className="game-shell-with-badge">
       <section className={`kings-game-shell${illegalMoveShake ? ' illegal-move-shake' : ''}`}>
-        <section className="kings-region kings-region-operations" aria-label="Turn and round settings">
+        <section className="kings-region kings-region-operations" aria-label="Game state and difficulty">
         <span className="turn-pill">Deck: {gameState.deck.length}</span>
 
         <ControlCycleButton
@@ -469,15 +485,7 @@ export function KingsInTheCornerGame() {
           Difficulty: {gameState.difficulty === 'easy' ? 'Easy' : gameState.difficulty === 'hard' ? 'Hard' : 'Medium'}
         </ControlCycleButton>
 
-        <ControlCycleButton
-          onClick={() => {
-            const currentIndex = PLAY_STYLE_ORDER.indexOf(gameState.playStyle)
-            const nextIndex = (currentIndex + 1) % PLAY_STYLE_ORDER.length
-            handlePlayStyleChange(PLAY_STYLE_ORDER[nextIndex])
-          }}
-        >
-          Style: {gameState.playStyle === 'forced' ? 'Forced' : 'Open'}
-        </ControlCycleButton>
+        <span className="turn-pill">You: {gameState.playerHand.length} | CPU: {gameState.computerHand.length}</span>
       </section>
 
       <p className="status-message">{gameState.status}</p>
@@ -650,7 +658,6 @@ export function KingsInTheCornerGame() {
           gameName="Kings in the Corner"
           accent="cyan"
           outcome={roundOutcome}
-          message={gameState.status}
           footerItems={[{ label: 'Difficulty', value: gameState.difficulty }]}
           entry={recordEntry}
           onPlayAgain={handlePlayAgain}
