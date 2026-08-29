@@ -35,11 +35,10 @@ const TARGETS = [
 const SUPPORTED_DIFFICULTIES = new Set(['easy', 'medium', 'hard'])
 const SUPPORTED_PLAY_STYLES = new Set(['open', 'forced'])
 
-const MEDIUM_PLAY_HELP_THRESHOLD = 0.34
-const HARD_PLAY_HELP_THRESHOLD = 0.28
-const MEDIUM_FORCED_PLAY_HAND_SIZE = 10
 const HARD_FORCED_PLAY_HAND_SIZE = 12
-const HARD_FALLBACK_MIN_SCORE = 0.75
+const HARD_HOLD_BACK_EARLY_PLAY_DECK = 26
+const HARD_HOLD_BACK_FULL_SKIP_DECK = 6
+const HARD_HOLD_BACK_SINGLE_PLAY_DECK = 3
 
 function normalizeDifficulty(difficulty) {
   return SUPPORTED_DIFFICULTIES.has(difficulty) ? difficulty : 'easy'
@@ -126,6 +125,7 @@ function buildSetupState(difficulty, status = 'Shuffle the deck and deal to star
     computerHand: [],
     piles: createEmptyPiles(),
     playedThisTurn: 0,
+    emptyDrawTurn: false,
     status,
     winner: null,
   }
@@ -199,6 +199,62 @@ function getEmptyTableauHandMoves(legalMoves, piles) {
   )
 }
 
+function usesHardPolicy(state) {
+  return state.difficulty === 'hard' || state.difficulty === 'medium'
+}
+
+function isHardKingCornerEndgame(state) {
+  return state.difficulty === 'hard' && Boolean(state.emptyDrawTurn)
+}
+
+function isAllowedEndgameHandMove(move) {
+  return Boolean(move.target?.isCorner)
+}
+
+function isAllowedEndgameBoardMove(move) {
+  return move.source.area === 'tableau' && Boolean(move.target?.isCorner)
+}
+
+function getPlayableHandMoves(state, legalMoves) {
+  if (!isHardKingCornerEndgame(state)) {
+    return legalMoves
+  }
+
+  return legalMoves.filter(isAllowedEndgameHandMove)
+}
+
+function getPlayableBoardMoves(state, moves) {
+  if (!isHardKingCornerEndgame(state)) {
+    return moves
+  }
+
+  return moves.filter(isAllowedEndgameBoardMove)
+}
+
+function getHardPlayableMoves(state) {
+  return getPlayableHandMoves(state, getLegalMovesForHand(state.computerHand, state.piles))
+}
+
+function findImmediateWinMove(state, legalMoves) {
+  for (const move of legalMoves) {
+    const nextState = applyHandMove(state, 'computer', move.card.id, move.target.area, move.target.key)
+    if (nextState.winner === 'computer') {
+      return move
+    }
+
+    if (nextState.computerHand.length >= state.computerHand.length) {
+      continue
+    }
+
+    const followUpMoves = getHardPlayableMoves(nextState)
+    if (findImmediateWinMove(nextState, followUpMoves)) {
+      return move
+    }
+  }
+
+  return null
+}
+
 function getVisibleBoardCards(piles) {
   return [
     ...Object.values(piles.tableau).flat(),
@@ -261,18 +317,137 @@ function estimateOpponentImmediatePlayableProbability(state, candidateMove) {
   return 1 - noHelpfulWays / totalWays
 }
 
+function getBoardTopCards(piles) {
+  return TARGETS.map((target) => getTopCard(piles[target.area][target.key])).filter(Boolean)
+}
+
+function countNearbySequenceSupport(hand, starter) {
+  const others = hand.filter((card) => card.id !== starter.id)
+  let support = 0
+
+  for (let step = 1; step <= 5; step += 1) {
+    const value = starter.value - step
+    const expectedColor = step % 2 === 0
+      ? starter.color
+      : starter.color === 'red'
+        ? 'black'
+        : 'red'
+    if (others.some((card) => card.value === value && card.color === expectedColor)) {
+      support += 1
+    }
+  }
+
+  return support
+}
+
+function hasNearbySequence(hand, starter) {
+  return countNearbySequenceSupport(hand, starter) >= 3
+}
+
+function duplicateTopBonus(state, move) {
+  const matchingTop = getBoardTopCards(state.piles).some(
+    (top) => top.rank === move.card.rank && top.id !== move.card.id,
+  )
+
+  if (!matchingTop) {
+    return 0
+  }
+
+  const targetPile = state.piles[move.target.area][move.target.key]
+  return targetPile.length === 0 ? 0 : 4
+}
+
+function cascadeLimitBonus(state, move) {
+  const targetPile = state.piles[move.target.area][move.target.key]
+  const targetTop = getTopCard(targetPile)
+
+  if (!targetTop) {
+    return 0
+  }
+
+  const sameOrderLowPile = getBoardTopCards(state.piles).some(
+    (top) =>
+      top.id !== targetTop.id
+      && top.color === targetTop.color
+      && top.value <= targetTop.value - 4,
+  )
+
+  if (!sameOrderLowPile) {
+    return 0
+  }
+
+  if (move.card.value <= 4) {
+    return 5
+  }
+
+  if (move.card.value >= 7) {
+    return -6
+  }
+
+  return 0
+}
+
+function emptyPileRefillBonus(state, move) {
+  if (move.target.area !== 'tableau') {
+    return 0
+  }
+
+  const targetPile = state.piles[move.target.area][move.target.key]
+  if (targetPile.length !== 0) {
+    return 0
+  }
+
+  const hand = state.computerHand
+  const betterStarter = hand.some((card) => card.value >= 10 && hasNearbySequence(hand, card))
+
+  if (move.card.rank === 'A') {
+    return betterStarter ? -3 : 8
+  }
+
+  if (move.card.value >= 10 && hasNearbySequence(hand, move.card)) {
+    return 10
+  }
+
+  if (move.card.value >= 6 && move.card.value <= 9) {
+    return -4
+  }
+
+  return 0
+}
+
+function emptyTableauFillBonus(state, move) {
+  if (move.target.area !== 'tableau' || state.piles.tableau[move.target.key].length !== 0) {
+    return 0
+  }
+
+  return 6
+}
+
+function hardChoiceHabitBonus(state, move) {
+  if (!usesHardPolicy(state)) {
+    return 0
+  }
+
+  return (
+    duplicateTopBonus(state, move)
+    + cascadeLimitBonus(state, move)
+    + emptyPileRefillBonus(state, move)
+    + emptyTableauFillBonus(state, move)
+  )
+}
+
 function scoreComputerMove(state, move, riskWeight) {
   const risk = estimateOpponentImmediatePlayableProbability(state, move)
 
-  // Simulate one-step mobility gain for the computer after choosing this move.
   const simulated = applyHandMove(state, 'computer', move.card.id, move.target.area, move.target.key)
   const mobility = getLegalMovesForHand(simulated.computerHand, simulated.piles).length
   const cornerBonus = move.target.isCorner ? 1 : 0
+  const habitBonus = hardChoiceHabitBonus(state, move)
 
   return {
     move,
     risk,
-    score: mobility + cornerBonus - riskWeight * risk,
+    score: mobility + cornerBonus + habitBonus - riskWeight * risk,
   }
 }
 
@@ -333,9 +508,13 @@ function getLegalBoardMoves(piles) {
   return moves
 }
 
-function isStrategicBoardMove(move) {
-  // Corner-origin moves are usually fake progress (corner->corner shuffles or vacating kings).
+function isStrategicBoardMove(move, piles) {
   if (move.source.isCorner) {
+    return false
+  }
+
+  const targetPile = piles[move.target.area][move.target.key]
+  if (!move.target.isCorner && targetPile.length === 0 && move.movableRun.startIndex === 0) {
     return false
   }
 
@@ -343,7 +522,7 @@ function isStrategicBoardMove(move) {
 }
 
 function getStrategicBoardMoves(piles) {
-  return getLegalBoardMoves(piles).filter(isStrategicBoardMove)
+  return getLegalBoardMoves(piles).filter((move) => isStrategicBoardMove(move, piles))
 }
 
 function getPilesSignature(piles) {
@@ -421,7 +600,10 @@ function playAvailableBoardMoves(state, actions, moveLimit, previousMove = null)
     }
 
     seenSignatures.add(signature)
-    const boardMove = pickBestBoardMove(getStrategicBoardMoves(nextState.piles), lastMove)
+    const boardMove = pickBestBoardMove(
+      getPlayableBoardMoves(nextState, getStrategicBoardMoves(nextState.piles)),
+      lastMove,
+    )
 
     if (!boardMove) {
       break
@@ -441,13 +623,34 @@ function playAvailableBoardMoves(state, actions, moveLimit, previousMove = null)
 }
 
 function shouldForceProgressMove(state, legalMoves) {
-  if (state.deck.length > 0 || legalMoves.length === 0) {
+  if (state.difficulty !== 'hard' || state.deck.length > 0 || legalMoves.length === 0) {
     return false
   }
 
-  // Prevent endgame pass loops: when the deck is empty and a legal move exists,
-  // the computer must advance board state instead of repeatedly passing.
   return true
+}
+
+function getHardHandPlayBudget(state, legalMoves) {
+  if (
+    state.computerHand.length >= HARD_FORCED_PLAY_HAND_SIZE
+    || shouldForceProgressMove(state, legalMoves)
+  ) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  if (state.deck.length >= HARD_HOLD_BACK_EARLY_PLAY_DECK) {
+    return 1
+  }
+
+  if (state.deck.length >= HARD_HOLD_BACK_FULL_SKIP_DECK) {
+    return 0
+  }
+
+  if (state.deck.length >= HARD_HOLD_BACK_SINGLE_PLAY_DECK) {
+    return 1
+  }
+
+  return 2
 }
 
 function finishIfWinner(state, actor) {
@@ -474,10 +677,11 @@ function finishIfDraw(state) {
     return state
   }
 
-  const playerMoves = getLegalMovesForHand(state.playerHand, state.piles)
-  const computerMoves = getLegalMovesForHand(state.computerHand, state.piles)
+  const playerMoves = getPlayableHandMoves(state, getLegalMovesForHand(state.playerHand, state.piles))
+  const computerMoves = getPlayableHandMoves(state, getLegalMovesForHand(state.computerHand, state.piles))
+  const boardMoves = getPlayableBoardMoves(state, getLegalBoardMoves(state.piles))
 
-  if (playerMoves.length === 0 && computerMoves.length === 0) {
+  if (playerMoves.length === 0 && computerMoves.length === 0 && boardMoves.length === 0) {
     return {
       ...state,
       phase: 'finished',
@@ -554,6 +758,19 @@ export function attemptPlayerPileMove(state, sourceArea, sourceKey, targetArea, 
     }
   }
 
+  if (
+    isHardKingCornerEndgame(state)
+    && !isAllowedEndgameBoardMove({
+      source: { area: sourceArea },
+      target,
+    })
+  ) {
+    return {
+      ...state,
+      status: 'After the draw pile is empty, move tableau cards onto king corners only.',
+    }
+  }
+
   const nextPiles = clonePiles(state.piles)
   nextPiles[sourceArea][sourceKey] = nextPiles[sourceArea][sourceKey].slice(0, movableRun.startIndex)
   nextPiles[targetArea][targetKey].push(...movableRun.run)
@@ -571,7 +788,7 @@ export function attemptPlayerPileMove(state, sourceArea, sourceKey, targetArea, 
   return finishIfDraw(finishIfWinner(nextState, 'player'))
 }
 
-export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey) {
+export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey, state = null) {
   const sourcePile = piles[sourceArea]?.[sourceKey]
 
   if (!sourcePile || sourcePile.length === 0) {
@@ -583,13 +800,24 @@ export function getLegalPileMoveTargetKeys(piles, sourceArea, sourceKey) {
       return false
     }
 
+    if (
+      state
+      && isHardKingCornerEndgame(state)
+      && !isAllowedEndgameBoardMove({
+        source: { area: sourceArea },
+        target,
+      })
+    ) {
+      return false
+    }
+
     const targetPile = piles[target.area][target.key]
     return Boolean(getMovableRunForTarget(sourcePile, targetPile, target.isCorner))
   }).map((target) => `${target.area}:${target.key}`)
 }
 
 export function createKingsInTheCornerState() {
-  return buildSetupState('hard')
+  return buildSetupState('medium')
 }
 
 export function shuffleKingsInTheCorner(state) {
@@ -650,6 +878,7 @@ export function dealKingsInTheCorner(state) {
       corners: createEmptyPiles().corners,
     },
     playedThisTurn: 0,
+    emptyDrawTurn: false,
     status: 'Round started. Draw a card to begin your turn.',
     winner: null,
   }
@@ -666,8 +895,9 @@ export function drawForPlayer(state) {
   if (state.deck.length === 0) {
     return finishIfDraw({
       ...state,
+      emptyDrawTurn: true,
       phase: 'playerAction',
-      status: 'The draw pile is empty. Play any legal cards, then press Go.',
+      status: 'The draw pile is empty. Play onto king corners, then press Go.',
     })
   }
 
@@ -676,6 +906,7 @@ export function drawForPlayer(state) {
   return {
     ...state,
     deck,
+    emptyDrawTurn: false,
     playerHand: sortHand([...state.playerHand, drawnCard[0]]),
     phase: 'playerAction',
     status: `You drew ${drawnCard[0].label}. Play any legal cards, then press Go.`,
@@ -701,6 +932,18 @@ export function attemptPlayerMove(state, cardId, targetArea, targetKey) {
     return {
       ...state,
       status: `That move is not legal. ${target.isCorner ? 'Only a king can start an empty corner.' : 'Cards must descend in rank and alternate color.'}`,
+    }
+  }
+
+  const playableMoves = getPlayableHandMoves(state, getLegalMovesForHand(state.playerHand, state.piles))
+  const isPlayable = playableMoves.some(
+    (move) => move.card.id === cardId && move.target.area === targetArea && move.target.key === targetKey,
+  )
+
+  if (!isPlayable) {
+    return {
+      ...state,
+      status: 'After the draw pile is empty, play onto king corners only.',
     }
   }
 
@@ -730,8 +973,13 @@ export function getPlayerEndTurnError(state) {
   }
 
   const legalMoves = getLegalMovesForHand(state.playerHand, state.piles)
+  const playableMoves = getPlayableHandMoves(state, legalMoves)
 
-  if (state.playStyle === 'forced' && legalMoves.length > 0) {
+  if (!isHardKingCornerEndgame(state) && getEmptyTableauHandMoves(legalMoves, state.piles).length > 0) {
+    return 'Fill every empty middle pile before ending your turn.'
+  }
+
+  if (state.playStyle === 'forced' && playableMoves.length > 0) {
     return 'Forced play style requires you to finish every legal play before ending your turn.'
   }
 
@@ -744,6 +992,7 @@ export function runComputerTurn(state) {
     turn: 'computer',
     phase: 'computerTurn',
     playedThisTurn: 0,
+    emptyDrawTurn: state.deck.length === 0,
   }
 
   const actions = []
@@ -772,34 +1021,12 @@ export function runComputerTurn(state) {
 
       legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
     }
-  } else if (nextState.difficulty === 'medium') {
-    while (legalMoves.length > 0) {
-      const scoredMoves = legalMoves.map((move) => scoreComputerMove(nextState, move, 2.5))
-      const lowRiskMoves = scoredMoves.filter((entry) => entry.risk <= MEDIUM_PLAY_HELP_THRESHOLD)
-      const mustPlay =
-        nextState.computerHand.length >= MEDIUM_FORCED_PLAY_HAND_SIZE
-        || shouldForceProgressMove(nextState, legalMoves)
-      const selected = choosePolicyMove(lowRiskMoves.length > 0 ? lowRiskMoves : mustPlay ? scoredMoves : [])
-
-      if (!selected) {
-        break
-      }
-
-      nextState = applyHandMove(nextState, 'computer', selected.move.card.id, selected.move.target.area, selected.move.target.key)
-      actions.push(`played ${selected.move.card.label} to ${selected.move.target.label}`)
-
-      if (nextState.phase === 'finished') {
-        return nextState
-      }
-
-      legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
-    }
   } else {
     const MAX_BOARD_MOVES_PER_TURN = 64
     let boardMovesThisTurn = 0
     let previousBoardMove = null
+    let handPlaysThisTurn = 0
 
-    // Hard mode should not leave free board progress behind when a board move is available.
     if (boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
       const boardSweep = playAvailableBoardMoves(
         nextState,
@@ -810,7 +1037,7 @@ export function runComputerTurn(state) {
       nextState = boardSweep.nextState
       boardMovesThisTurn += boardSweep.played
       previousBoardMove = boardSweep.lastMove
-      legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+      legalMoves = getHardPlayableMoves(nextState)
     }
 
     while (legalMoves.length > 0 || boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
@@ -827,36 +1054,31 @@ export function runComputerTurn(state) {
         nextState = boardSweep.nextState
         previousBoardMove = boardSweep.lastMove
         boardMovesThisTurn += boardSweep.played
-        legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+        legalMoves = getHardPlayableMoves(nextState)
         continue
       }
 
+      const winningMove = findImmediateWinMove(nextState, legalMoves)
+      const emptyTableauMoves = getEmptyTableauHandMoves(legalMoves, nextState.piles)
+      const playBudget = winningMove
+        ? Number.POSITIVE_INFINITY
+        : getHardHandPlayBudget(nextState, legalMoves)
+      if (!winningMove && emptyTableauMoves.length === 0 && handPlaysThisTurn >= playBudget) {
+        break
+      }
+
       const scoredMoves = legalMoves.map((move) => scoreComputerMove(nextState, move, 4))
-      const forcedTableauFillMoves = getEmptyTableauHandMoves(legalMoves, nextState.piles)
-      const forcedTableauFillScored = scoredMoves.filter((entry) =>
-        forcedTableauFillMoves.some(
-          (forcedMove) =>
-            forcedMove.card.id === entry.move.card.id
-            && forcedMove.target.area === entry.move.target.area
-            && forcedMove.target.key === entry.move.target.key,
+      const emptyTableauScored = scoredMoves.filter((entry) =>
+        emptyTableauMoves.some(
+          (fillMove) =>
+            fillMove.card.id === entry.move.card.id
+            && fillMove.target.area === entry.move.target.area
+            && fillMove.target.key === entry.move.target.key,
         ),
       )
-      const lowRiskMoves = scoredMoves.filter((entry) => entry.risk <= HARD_PLAY_HELP_THRESHOLD)
-      const fallbackMoves = scoredMoves.filter((entry) => entry.score >= HARD_FALLBACK_MIN_SCORE)
-      const mustPlay =
-        nextState.computerHand.length >= HARD_FORCED_PLAY_HAND_SIZE
-        || shouldForceProgressMove(nextState, legalMoves)
-      const selected = choosePolicyMove(
-        forcedTableauFillScored.length > 0
-          ? forcedTableauFillScored
-          : lowRiskMoves.length > 0
-            ? lowRiskMoves
-            : fallbackMoves.length > 0
-              ? fallbackMoves
-              : mustPlay
-                ? scoredMoves
-                : [],
-      )
+      const selected = winningMove
+        ? { move: winningMove }
+        : choosePolicyMove(emptyTableauScored.length > 0 ? emptyTableauScored : scoredMoves)
 
       if (!selected) {
         const boardSweep = playAvailableBoardMoves(
@@ -871,16 +1093,22 @@ export function runComputerTurn(state) {
         nextState = boardSweep.nextState
         previousBoardMove = boardSweep.lastMove
         boardMovesThisTurn += boardSweep.played
-        legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+        legalMoves = getHardPlayableMoves(nextState)
         continue
       }
 
       nextState = applyHandMove(nextState, 'computer', selected.move.card.id, selected.move.target.area, selected.move.target.key)
       actions.push(`played ${selected.move.card.label} to ${selected.move.target.label}`)
       previousBoardMove = null
+      handPlaysThisTurn += 1
 
       if (nextState.phase === 'finished') {
-        return nextState
+        return {
+          ...nextState,
+          status: actions.length > 0
+            ? `Computer ${actions.join(', ')}. ${nextState.status}`
+            : nextState.status,
+        }
       }
 
       if (boardMovesThisTurn < MAX_BOARD_MOVES_PER_TURN) {
@@ -895,7 +1123,7 @@ export function runComputerTurn(state) {
         boardMovesThisTurn += boardSweep.played
       }
 
-      legalMoves = getLegalMovesForHand(nextState.computerHand, nextState.piles)
+      legalMoves = getHardPlayableMoves(nextState)
     }
   }
 
@@ -920,6 +1148,16 @@ export function formatCardLabel(card) {
   return card.label
 }
 
-export function getLegalTargetKeys(card, piles) {
-  return getLegalTargetsForCard(card, piles).map((target) => `${target.area}:${target.key}`)
+export function getLegalTargetKeys(card, piles, state = null) {
+  const targets = getLegalTargetsForCard(card, piles)
+
+  if (!state) {
+    return targets.map((target) => `${target.area}:${target.key}`)
+  }
+
+  const playableMoves = getPlayableHandMoves(state, getLegalMovesForHand(state.playerHand, piles))
+
+  return playableMoves
+    .filter((move) => move.card.id === card.id)
+    .map((move) => `${move.target.area}:${move.target.key}`)
 }

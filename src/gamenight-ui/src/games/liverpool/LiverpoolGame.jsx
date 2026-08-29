@@ -19,7 +19,7 @@ import {
   preparePendingDeal,
   takeTopDiscard,
 } from './liverpoolLogic.js'
-import { chooseCpuCutCount, getPerfectCutTargets, resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
+import { chooseCpuCutCount, evaluateUserBuyOpportunity, getPerfectCutTargets, resolveBuy, resolvePerfectCut, resolvePlay } from './liverpoolReactions.js'
 
 const CARD_IMAGES = import.meta.glob('../../assets/*.png', { eager: true, import: 'default' })
 const GAME_KEY = 'liverpool'
@@ -163,8 +163,9 @@ function SeatBox({ name, score, markers = [], cardCount, className }) {
   )
 }
 
-function RoundScoreTable({ state, playerNames }) {
+function RoundScoreTable({ state, playerNames, showFinalWinnerMark = false }) {
   const roundScores = state.roundResult?.scores ?? {}
+  const winnerId = showFinalWinnerMark ? state.winnerId : state.roundResult?.winnerId
   const rows = PLAYER_IDS.map((playerId) => {
     const player = state.players.find((candidate) => candidate.id === playerId)
     return {
@@ -187,14 +188,20 @@ function RoundScoreTable({ state, playerNames }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
-          <tr key={row.playerId}>
-            <th scope="row">{row.name}</th>
+        {rows.map((row) => {
+          const isWinner = Boolean(winnerId) && row.playerId === winnerId
+          return (
+          <tr key={row.playerId} className={isWinner ? 'liverpool-score-winner' : undefined}>
+            <th scope="row">
+              <span>{row.name}</span>
+              {isWinner && showFinalWinnerMark ? <span className="liverpool-final-winner-mark">Winner</span> : null}
+            </th>
             <td>{row.roundScore}</td>
             <td>{row.cardsLeft}</td>
             <td>{row.totalScore}</td>
           </tr>
-        ))}
+          )
+        })}
       </tbody>
     </table>
   )
@@ -415,7 +422,7 @@ export function LiverpoolGame() {
         if (action.type === 'draw-stock') {
           if (topDiscard?.frozen) {
             updateState(drawFromStock(gameState, activePlayer.id, rngRef.current), `${PLAYER_NAMES[activePlayer.id]} drew from stock.`)
-          } else if (topDiscard?.discardedBy === 'cpu-1' && activePlayer.id === 'cpu-2') {
+          } else if (evaluateUserBuyOpportunity(gameState, action).offered) {
             setReaction({ kind: 'buy', seconds: 10, pendingDrawPlayerId: activePlayer.id })
             setNotice('CPU 1 discarded. Buy now or skip before CPU 2 draws.')
           } else {
@@ -762,7 +769,7 @@ export function LiverpoolGame() {
             onResetRecord={isMatchComplete ? handleResetRecord : undefined}
             playAgainLabel={isMatchComplete ? 'Restart Game' : playMode === 'fullGame' ? 'Next Hand' : 'Replay Hand'}
           >
-            <RoundScoreTable state={gameState} playerNames={PLAYER_NAMES} />
+            <RoundScoreTable state={gameState} playerNames={PLAYER_NAMES} showFinalWinnerMark={isMatchComplete} />
           </GameRecordPopup>
         ) : null}
         <Opponent player={players[1]} side="left" state={gameState} playerIndex={1} selectedMeld={selectedMeld} onSelectMeld={handleMeldTarget} canSelectMeld={canSelectMeld} cutFeedback={cutFeedbackByPlayer[players[1].id]} buyHighlightPlayerId={buyHighlightPlayerId} />

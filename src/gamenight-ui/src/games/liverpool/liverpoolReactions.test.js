@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createRoundState, validateMeld } from './liverpoolLogic.js'
+import { createRoundState, discardCard, drawFromStock, validateMeld } from './liverpoolLogic.js'
 import {
   chooseCpuCutCount,
+  evaluateUserBuyOpportunity,
   getPerfectCutTargets,
   isPerfectCut,
   resolveBuy,
@@ -72,6 +73,44 @@ test('buy rejects late, active, own-discard, and frozen claims without changing 
     assert.equal(result.reason, fixture.reason)
     assert.strictEqual(result.state, state)
   }
+})
+
+test('user BUY opportunities equal eligible CPU 1 discards minus CPU 2 direct takes', (testContext) => {
+  const fixtures = [
+    { action: { type: 'draw-stock' }, expected: { offered: true, reason: 'user-offered' } },
+    { action: { type: 'take-discard' }, expected: { offered: false, reason: 'active-player-take' } },
+  ]
+  const outcomes = fixtures.map(({ action, expected }) => {
+    const state = reactionState()
+    state.activePlayerIndex = 2
+    state.discardPile[0].discardedBy = 'cpu-1'
+    const outcome = evaluateUserBuyOpportunity(state, action)
+    assert.deepEqual(outcome, { ...expected, cardId: 'top' })
+    return outcome
+  })
+
+  const cpu1Discards = outcomes.length
+  const cpu2Takes = outcomes.filter((outcome) => outcome.reason === 'active-player-take').length
+  const userOffers = outcomes.filter((outcome) => outcome.offered).length
+  testContext.diagnostic(`BUY opportunity log: CPU1 discards=${cpu1Discards}, CPU2 takes=${cpu2Takes}, user offers=${userOffers}`)
+  assert.equal(userOffers, cpu1Discards - cpu2Takes)
+})
+
+test('same face after a skipped BUY is a different physical card drawn and discarded by CPU 2', () => {
+  const state = reactionState()
+  state.activePlayerIndex = 2
+  state.discardPile[0] = { card: natural('cpu1-seven', '7', 'hearts'), discardedBy: 'cpu-1', frozen: false }
+  state.stock = [natural('cpu2-seven-copy', '7', 'hearts')]
+
+  const afterDraw = drawFromStock(state, 'cpu-2', fixedRng)
+  const afterDiscard = discardCard(afterDraw, 'cpu-2', 'cpu2-seven-copy')
+  const previous = afterDiscard.discardPile.at(-2).card
+  const current = afterDiscard.discardPile.at(-1).card
+
+  assert.notEqual(current.id, previous.id)
+  assert.equal(current.rank, previous.rank)
+  assert.equal(current.suit, previous.suit)
+  assert.equal(afterDiscard.discardPile.at(-1).discardedBy, 'cpu-2')
 })
 
 test('PLAY uses user-first legal arbitration, freezes the caller discard, and resumes interrupted turn', () => {

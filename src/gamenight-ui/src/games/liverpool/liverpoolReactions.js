@@ -228,6 +228,21 @@ export function resolveBuy(state, claims, { userPlayerId = 'player', windowOpen 
   return unchanged(state, rejectedClaims[0]?.reason ?? 'no-eligible-claims', rejectedClaims)
 }
 
+export function evaluateUserBuyOpportunity(state, activeAction, { userPlayerId = 'player' } = {}) {
+  const activePlayerId = state?.players?.[state.activePlayerIndex]?.id
+  const topDiscard = state?.discardPile?.at(-1)
+  const cardId = topDiscard?.card?.id ?? null
+
+  if (state?.roundStatus !== 'active' || state?.phase !== 'draw') return { offered: false, reason: 'window-unavailable', cardId }
+  if (!activePlayerId || activePlayerId === userPlayerId) return { offered: false, reason: 'user-turn', cardId }
+  if (!topDiscard?.card || topDiscard.discardedBy === null) return { offered: false, reason: 'unowned-discard', cardId }
+  if (topDiscard.frozen) return { offered: false, reason: 'frozen-discard', cardId }
+  if (topDiscard.discardedBy === userPlayerId) return { offered: false, reason: 'own-discard', cardId }
+  if (activeAction?.type === 'take-discard') return { offered: false, reason: 'active-player-take', cardId }
+  if (activeAction?.type === 'draw-stock') return { offered: true, reason: 'user-offered', cardId }
+  return { offered: false, reason: 'active-action-pending', cardId }
+}
+
 function attemptPlay(state, claim, topDiscard) {
   const callerIndex = playerIndex(state, claim.playerId)
   const interruptedPlayerIndex = state.activePlayerIndex

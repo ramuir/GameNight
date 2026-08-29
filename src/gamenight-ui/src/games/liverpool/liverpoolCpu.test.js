@@ -91,6 +91,31 @@ test('draw phase takes discard for unopened round-seven run progress', () => {
   assert.deepEqual(action, { type: 'take-discard' })
 })
 
+test('CPU 2 direct take from CPU 1 completes and enters its immediate meld', () => {
+  const nearContract = [
+    ...group('cpu2-fives', '5'),
+    natural('cpu2-nine-c', '9', 'clubs'),
+    natural('cpu2-nine-d', '9', 'diamonds'),
+    natural('cpu2-deadwood', 'K', 'spades'),
+  ]
+  const state = stateFor({ hand: [], phase: 'draw', top: natural('cpu1-nine-h', '9'), discardedBy: 'cpu-1' })
+  state.activePlayerIndex = 2
+  state.players[2].hand = nearContract
+
+  const takeAction = chooseLiverpoolCpuAction(state, 'cpu-2', fixedFirst)
+  assert.deepEqual(takeAction, { type: 'take-discard' })
+
+  const afterTake = applyAction(state, 'cpu-2', takeAction)
+  const meldAction = chooseLiverpoolCpuAction(afterTake, 'cpu-2', fixedFirst)
+  assert.equal(meldAction.type, 'meld-initial-contract')
+
+  const afterMeld = applyAction(afterTake, 'cpu-2', meldAction)
+  assert.equal(
+    afterMeld.players[2].melds.some((meld) => meld.cards.some((card) => card.id === 'cpu1-nine-h')),
+    true,
+  )
+})
+
 test('plays a complete initial contract and then legal layoffs before discarding', () => {
   const hand = [
     ...group('fives', '5'),

@@ -234,7 +234,7 @@ export function ConnectFourGame() {
 
     const aiTimer = window.setTimeout(() => {
       setIsComputerThinking(true)
-      const aiMove = chooseConnectFourMove(gameState, difficulty)
+      const aiMove = chooseConnectFourMove(gameState, difficulty, recordBook, GAME_KEY)
       if (aiMove === null) {
         setIsComputerThinking(false)
         return
