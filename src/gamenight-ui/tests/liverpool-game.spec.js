@@ -456,6 +456,20 @@ for (const fixture of [
   })
 }
 
+test('unopened user can complete PLAY on a CPU discard', async ({ page }) => {
+  await page.goto('/?game=liverpool&seed=0048&fixture=play-unopened-user')
+
+  await expect(page.getByRole('timer')).toHaveText(/^PLAY [1-5]s$/)
+  await page.getByRole('button', { name: /^PLAY [1-5]$/ }).click()
+  await page.getByRole('button', { name: 'Target CPU 1 meld 1' }).click()
+  await selectCard(page, 'King of clubs')
+  await page.getByRole('button', { name: 'Complete PLAY', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: 'Target CPU 1 meld 1' }).locator('.meld-fan-card')).toHaveCount(4)
+  await expect(page.getByRole('button', { name: /Frozen discard pile/i })).toBeDisabled()
+  await expect(page.getByLabel('Your hand, 1 cards')).toBeVisible()
+})
+
 test('expired PLAY window invokes CPU fallback before normal CPU 2 sequencing', async ({ page }) => {
   await page.goto('/?game=liverpool&seed=0048&fixture=play-after-cpu1')
   await page.evaluate(() => {

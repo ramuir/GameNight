@@ -402,9 +402,9 @@ export function meldInitialContract(state, playerId, melds) {
   return next
 }
 
-export function layOff(state, playerId, ownerId, meldIndex, cardIds) {
+export function layOff(state, playerId, ownerId, meldIndex, cardIds, { requireOpened = true } = {}) {
   const playerIndex = requireTurn(state, playerId, 'action')
-  if (!state.players[playerIndex].hasOpened) throw new Error('A player must open before laying off')
+  if (requireOpened && !state.players[playerIndex].hasOpened) throw new Error('A player must open before laying off')
   const ownerIndex = state.players.findIndex((player) => player.id === ownerId)
   const target = state.players[ownerIndex]?.melds[meldIndex]
   if (!target) throw new Error('Unknown target meld')

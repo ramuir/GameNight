@@ -57,7 +57,7 @@ export function createDevFixtureState({ fixture, roundNumber, scores }) {
     }
     return state
   }
-  if (['play-after-cpu1', 'play-after-cpu2'].includes(fixture) && roundNumber === 1 && !scores) {
+  if (['play-after-cpu1', 'play-after-cpu2', 'play-unopened-user'].includes(fixture) && roundNumber === 1 && !scores) {
     const card = (id, rank, suit) => ({ id, rank, suit, isJoker: false })
     const state = createRoundState({ roundNumber: 1, playerIds: PLAYER_IDS, dealerIndex: 2, rng: seededRandom('0048') })
     const discarderIndex = fixture === 'play-after-cpu1' ? 1 : 2
@@ -78,12 +78,14 @@ export function createDevFixtureState({ fixture, roundNumber, scores }) {
       card('fixture-meld-4d', '4', 'diamonds'),
       card('fixture-meld-4h', '4', 'hearts'),
     ] }]
-    state.players[0].hasOpened = true
-    state.players[0].melds = [{ type: 'group', cards: [
-      card('fixture-user-open-9c', '9', 'clubs'),
-      card('fixture-user-open-9d', '9', 'diamonds'),
-      card('fixture-user-open-9h', '9', 'hearts'),
-    ] }]
+    state.players[0].hasOpened = fixture !== 'play-unopened-user'
+    if (state.players[0].hasOpened) {
+      state.players[0].melds = [{ type: 'group', cards: [
+        card('fixture-user-open-9c', '9', 'clubs'),
+        card('fixture-user-open-9d', '9', 'diamonds'),
+        card('fixture-user-open-9h', '9', 'hearts'),
+      ] }]
+    }
     state.stock = [card('fixture-stock-a', '8', 'clubs'), card('fixture-stock-b', '10', 'diamonds')]
     state.discardPile = [{ card: card('fixture-prior-discard', 'Q', 'hearts'), discardedBy: USER_ID, frozen: true }]
     return state
