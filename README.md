@@ -2,6 +2,8 @@
 
 Multi-game tabletop card and board game suite with a unified React/Vite UI and native game logic.
 
+Deployed on Netlify and playable at https://gamenight-solo.netlify.app/.
+
 ![GameNight landing page carousel cycling through Kings in the Corner, Connect Four, and Liverpool Rummy](assets/gamenight-landing-demo.gif)
 
 ## Supported Games

@@ -79,7 +79,6 @@ function claimRejection(state, claim, { activePlayerId, topDiscard, kind }) {
   if (kind === 'buy' && topDiscard.discardedBy === null) return 'unowned-discard-ineligible'
   if (kind === 'buy' && topDiscard.discardedBy === claim.playerId) return 'own-discard-ineligible'
   if (kind === 'play' && topDiscard.discardedBy === claim.playerId) return 'own-discard-ineligible'
-  if (kind === 'play' && !state.players[playerIndex(state, claim.playerId)]?.hasOpened) return 'not-opened-ineligible'
   if (kind === 'play' && claim.discardCardId !== undefined && typeof claim.discardCardId !== 'string') return 'invalid-claim'
   return null
 }
@@ -255,7 +254,7 @@ function attemptPlay(state, claim, topDiscard) {
 
   let played
   try {
-    played = layOff(context, claim.playerId, claim.ownerId, claim.meldIndex, [topDiscard.card.id])
+    played = layOff(context, claim.playerId, claim.ownerId, claim.meldIndex, [topDiscard.card.id], { requireOpened: false })
     const discardCardId = claim.discardCardId ?? chooseFreezeDiscardCard(played, claim.playerId)
     if (!discardCardId) return { error: 'Caller has no legal freeze discard after PLAY layoff' }
     const discarded = discardCard(played, claim.playerId, discardCardId)

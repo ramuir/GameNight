@@ -164,7 +164,7 @@ test('PLAY permits the user who became active after CPU 2 discarded', () => {
   assert.equal(result.state.phase, 'draw')
 })
 
-test('PLAY rejects callers who have not opened their own melds', () => {
+test('PLAY permits callers who have not opened their own melds', () => {
   const state = reactionState()
   state.players[0].hasOpened = false
   state.players[0].hand = [natural('user-discard', 'K'), natural('user-kept', '2')]
@@ -180,9 +180,14 @@ test('PLAY rejects callers who have not opened their own melds', () => {
     { playerId: 'player', ownerId: 'cpu-1', meldIndex: 0, discardCardId: 'user-discard' },
   ])
 
-  assert.equal(result.resolved, false)
-  assert.equal(result.reason, 'not-opened-ineligible')
-  assert.strictEqual(result.state, state)
+  assert.equal(result.resolved, true)
+  assert.equal(result.state.players[0].hasOpened, false)
+  assert.equal(result.state.players[1].melds[0].cards.some((card) => card.id === 'play-card'), true)
+  assert.deepEqual(result.state.discardPile.at(-1), {
+    card: natural('user-discard', 'K'),
+    discardedBy: 'player',
+    frozen: true,
+  })
 })
 
 test('PLAY rejects claims on a caller own discard', () => {
